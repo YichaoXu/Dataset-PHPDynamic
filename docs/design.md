@@ -331,12 +331,6 @@ PHPIncludes/
 │   ├── idea.md                   # Conceptual documentation
 │   ├── design.md                 # Technical design specification
 │   └── todo.md                   # Development task list
-├── data/
-│   ├── cache/                    # Cache storage directory
-│   │   └── github_cache.db       # SQLite cache database
-│   ├── temp/                     # Temporary files directory
-│   └── output/                    # CSV output directory
-│       └── php_projects.csv      # Generated results
 ├── scripts/
 │   ├── setup.py                  # Project setup script
 │   └── run_analysis.py           # Main execution script
@@ -345,6 +339,17 @@ PHPIncludes/
 ├── .gitignore                    # Git ignore rules
 ├── README.md                      # Project documentation
 └── main.py                       # Entry point
+
+# Runtime directories (not in version control)
+├── data/
+│   ├── cache/                    # Cache storage directory
+│   │   └── github_cache.db       # SQLite cache database
+│   ├── temp/                     # Temporary files directory
+│   └── output/                    # CSV output directory
+│       └── php_projects.csv      # Generated results
+├── .mypy_cache/                  # MyPy type checking cache
+├── .ruff_cache/                  # Ruff linting cache
+└── .semgrep/                     # Semgrep analysis cache
 ```
 
 ### File Structure Description

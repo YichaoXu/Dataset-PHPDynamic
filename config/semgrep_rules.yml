@@ -1,0 +1,144 @@
+rules:
+  # 检测动态include语句
+  - id: dynamic-include-detection
+    message: "Dynamic include statement detected"
+    languages: [php]
+    severity: WARNING
+    patterns:
+      - pattern-either:
+          - pattern: include $EXPR;
+          - pattern: include($EXPR);
+        metavariable-regex:
+          metavariable: $EXPR
+          regex: '.*\$.*'
+    metadata:
+      category: security
+      confidence: MEDIUM
+      description: "Detects dynamic include statements with variable expressions"
+
+  # 检测动态include_once语句
+  - id: dynamic-include-once-detection
+    message: "Dynamic include_once statement detected"
+    languages: [php]
+    severity: WARNING
+    patterns:
+      - pattern-either:
+          - pattern: include_once $EXPR;
+          - pattern: include_once($EXPR);
+        metavariable-regex:
+          metavariable: $EXPR
+          regex: '.*\$.*'
+    metadata:
+      category: security
+      confidence: MEDIUM
+      description: "Detects dynamic include_once statements with variable expressions"
+
+  # 检测动态require语句
+  - id: dynamic-require-detection
+    message: "Dynamic require statement detected"
+    languages: [php]
+    severity: WARNING
+    patterns:
+      - pattern-either:
+          - pattern: require $EXPR;
+          - pattern: require($EXPR);
+        metavariable-regex:
+          metavariable: $EXPR
+          regex: '.*\$.*'
+    metadata:
+      category: security
+      confidence: MEDIUM
+      description: "Detects dynamic require statements with variable expressions"
+
+  # 检测动态require_once语句
+  - id: dynamic-require-once-detection
+    message: "Dynamic require_once statement detected"
+    languages: [php]
+    severity: WARNING
+    patterns:
+      - pattern-either:
+          - pattern: require_once $EXPR;
+          - pattern: require_once($EXPR);
+        metavariable-regex:
+          metavariable: $EXPR
+          regex: '.*\$.*'
+    metadata:
+      category: security
+      confidence: MEDIUM
+      description: "Detects dynamic require_once statements with variable expressions"
+
+  # 检测字符串拼接的include
+  - id: string-concatenation-include
+    message: "Include with string concatenation detected"
+    languages: [php]
+    severity: WARNING
+    patterns:
+      - pattern-either:
+          - pattern: include $VAR . $EXPR;
+          - pattern: include($VAR . $EXPR);
+          - pattern: include_once $VAR . $EXPR;
+          - pattern: include_once($VAR . $EXPR);
+          - pattern: require $VAR . $EXPR;
+          - pattern: require($VAR . $EXPR);
+          - pattern: require_once $VAR . $EXPR;
+          - pattern: require_once($VAR . $EXPR);
+    metadata:
+      category: security
+      confidence: HIGH
+      description: "Detects include/require statements with string concatenation"
+
+  # 检测函数调用的include
+  - id: function-call-include
+    message: "Include with function call detected"
+    languages: [php]
+    severity: WARNING
+    patterns:
+      - pattern-either:
+          - pattern: include $FUNC(...);
+          - pattern: include($FUNC(...));
+          - pattern: include_once $FUNC(...);
+          - pattern: include_once($FUNC(...));
+          - pattern: require $FUNC(...);
+          - pattern: require($FUNC(...));
+          - pattern: require_once $FUNC(...);
+          - pattern: require_once($FUNC(...));
+    metadata:
+      category: security
+      confidence: HIGH
+      description: "Detects include/require statements with function calls"
+
+  # 检测$_GET/$_POST等SuperGlobal的使用
+  - id: superglobal-usage
+    message: "SuperGlobal variable usage detected"
+    languages: [php]
+    severity: INFO
+    patterns:
+      - pattern-either:
+          - pattern: $_GET[...]
+          - pattern: $_POST[...]
+          - pattern: $_REQUEST[...]
+          - pattern: $_COOKIE[...]
+          - pattern: $_SESSION[...]
+          - pattern: $_SERVER[...]
+          - pattern: $_ENV[...]
+          - pattern: $_FILES[...]
+    metadata:
+      category: security
+      confidence: HIGH
+      description: "Detects usage of PHP SuperGlobal variables"
+
+  # 检测动态函数调用
+  - id: dynamic-function-call
+    message: "Dynamic function call detected"
+    languages: [php]
+    severity: WARNING
+    patterns:
+      - pattern-either:
+          - pattern: call_user_func(...)
+          - pattern: call_user_func_array(...)
+          - pattern: forward_static_call(...)
+          - pattern: forward_static_call_array(...)
+    metadata:
+      category: security
+      confidence: HIGH
+      description: "Detects dynamic function calls that could be security risks"

@@ -8,3 +8,45 @@ wheels/
 
 # Virtual environments
 .venv
+venv/
+env/
+
+# uv
+uv.lock
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Runtime data directories (completely ignored)
+data/
+
+# Tool caches
+.mypy_cache/
+.ruff_cache/
+.semgrep/
+
+# Configuration files with secrets
+.env
+config/secrets.py
+
+# Test coverage
+htmlcov/
+.coverage
+.coverage.*
+coverage.xml
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+*.tmp
+*.temp

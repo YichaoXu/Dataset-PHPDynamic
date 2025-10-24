@@ -1,21 +1,21 @@
-# PHP项目筛选系统概念文档
+# PHP Project Filtering System Concept Document
 
 ## 1. Context
 
 **Problem Statement**
-在GitHub上存在大量PHP项目，其中一些项目可能包含安全风险特征，如使用动态函数调用或动态文件包含语句，同时允许用户通过SuperGlobal参数远程传入数据。当前缺乏系统化的方法来识别和筛选这类具有潜在安全风险的项目，需要构建一个自动化工具来发现这些项目并生成结构化的分析报告。
+GitHub hosts numerous PHP projects, some of which may contain security risk characteristics such as dynamic function calls or dynamic file inclusion statements while allowing users to remotely input data through SuperGlobal parameters. There is currently a lack of systematic methods to identify and filter such projects with potential security risks, requiring an automated tool to discover these projects and generate structured analysis reports.
 
 **System Role**
-本系统作为GitHub项目安全分析工具链中的核心筛选模块，负责从海量PHP项目中识别具有特定安全风险特征的项目，为后续的安全研究和分析提供高质量的数据集。
+This system serves as the core filtering module in the GitHub project security analysis toolchain, responsible for identifying projects with specific security risk characteristics from massive PHP projects, providing high-quality datasets for subsequent security research and analysis.
 
 **Data Flow**
-- **Inputs:** GitHub API搜索查询、PHP代码内容、Semgrep规则配置
-- **Outputs:** 符合条件的项目信息、CSV格式的分析报告、检测结果详情
-- **Connections:** GitHub API → 项目筛选系统 → CSV报告生成器
+- **Inputs:** GitHub API search queries, PHP code content, Semgrep rule configurations
+- **Outputs:** Qualified project information, CSV format analysis reports, detection result details
+- **Connections:** GitHub API → Project Filtering System → CSV Report Generator
 
 **Scope Boundaries**
-- **Owned:** PHP代码静态分析、项目筛选逻辑、结果导出、缓存管理
-- **Not Owned:** GitHub API本身、Semgrep工具维护、最终安全评估
+- **Owned:** PHP code static analysis, project filtering logic, result export, cache management
+- **Not Owned:** GitHub API itself, Semgrep tool maintenance, final security assessment
 
 ## 2. Concepts
 
@@ -36,35 +36,35 @@ CSV Output
 
 **Core Concepts**
 
-- **SuperGlobal Requirement**: 项目必须包含SuperGlobal参数使用的必要条件。这个概念定义了筛选的第一道门槛，确保只有允许用户远程传入数据的项目才会被进一步分析。范围包括$_GET、$_POST等所有SuperGlobal变量，排除纯静态或内部使用的项目。
+- **SuperGlobal Requirement**: The necessary condition that projects must contain SuperGlobal parameter usage. This concept defines the first screening threshold, ensuring that only projects allowing users to remotely input data will be further analyzed. Scope includes all SuperGlobal variables such as $_GET, $_POST, excluding purely static or internally used projects.
 
-- **Primary Function Detection**: 检测特殊动态函数调用的核心概念。这些函数（call_user_func、call_user_func_array等）代表代码中的动态执行能力，是安全风险的重要指标。概念范围包括函数存在性检测和使用详情分析，与SuperGlobal Requirement形成组合条件。
+- **Primary Function Detection**: The core concept for detecting special dynamic function calls. These functions ("call_user_func", "call_user_func_array", "forward_static_call", "forward_static_call_array", etc.) represent dynamic execution capabilities in code and are important indicators of security risks. Concept scope includes function existence detection and usage detail analysis, forming combined conditions with SuperGlobal Requirement.
 
-- **Fallback Include Detection**: 当主要函数不存在时的备选检测策略。这个概念扩展了检测范围，通过Semgrep静态分析识别动态文件包含语句。范围限定为非字符串字面量的表达式，包括变量、字符串拼接、函数调用等动态生成路径的情况。
+- **Fallback Include Detection**: The alternative detection strategy when primary functions do not exist. This concept extends the detection scope by using Semgrep static analysis to identify dynamic file inclusion statements. Scope is limited to non-string literal expressions, including variables, string concatenation, function calls, and other dynamically generated path situations.
 
-- **Filtering Logic**: 严格的多层筛选逻辑概念。这个概念定义了从项目发现到最终记录的完整决策流程，确保只有同时满足SuperGlobal条件和函数/包含检测的项目才会被记录。逻辑流程具有明确的优先级和放弃条件。
+- **Filtering Logic**: The strict multi-layer filtering logic concept. This concept defines the complete decision process from project discovery to final recording, ensuring that only projects meeting both SuperGlobal conditions and function/include detection will be recorded. The logic flow has clear priorities and abandonment conditions.
 
-- **Analysis Result**: 封装项目分析结果的数据概念。这个概念统一了不同类型检测结果的数据结构，支持主要检测和备选检测两种模式，为CSV导出提供标准化的数据格式。
+- **Analysis Result**: The data concept encapsulating project analysis results. This concept unifies the data structure of different types of detection results, supporting both primary detection and alternative detection modes, providing standardized data format for CSV export.
 
 ## 3. Contracts & Flow
 
 **Data Contracts**
-- **With GitHub API:** 接收仓库元数据、代码内容、commit信息、star数量
-- **With Semgrep:** 交换PHP代码内容和静态分析规则，接收检测结果
-- **With CSV Output:** 提供标准化的项目信息字段和分析结果
+- **With GitHub API:** Receives repository metadata, code content, commit information, star counts
+- **With Semgrep:** Exchanges PHP code content and static analysis rules, receives detection results
+- **With CSV Output:** Provides standardized project information fields and analysis results
 
 **Internal Processing Flow**
-1. **Repository Discovery** - 通过GitHub Code Search API搜索包含SuperGlobal使用的PHP项目
-2. **SuperGlobal Validation** - 验证项目是否真正包含SuperGlobal参数使用
-3. **Primary Function Analysis** - 检测call_user_func等动态函数的使用情况
-4. **Fallback Analysis** - 当主要函数不存在时，使用Semgrep检测动态include语句
-5. **Result Qualification** - 应用筛选逻辑，确定项目是否符合记录条件
-6. **Data Export** - 将符合条件的项目信息导出为CSV格式
+1. **Repository Discovery** - Searches for PHP projects containing SuperGlobal usage through GitHub Code Search API
+2. **SuperGlobal Validation** - Validates whether projects truly contain SuperGlobal parameter usage
+3. **Primary Function Analysis** - Detects usage of dynamic functions like call_user_func
+4. **Fallback Analysis** - When primary functions do not exist, uses Semgrep to detect dynamic include statements
+5. **Result Qualification** - Applies filtering logic to determine if projects meet recording conditions
+6. **Data Export** - Exports qualified project information to CSV format
 
 ## 4. Scenarios
 
-- **Typical:** 搜索发现一个PHP项目包含$_GET使用，检测到call_user_func函数调用，项目被标记为primary类型并记录到CSV文件中，包含完整的项目信息和函数使用详情。
+- **Typical:** A search discovers a PHP project containing $_GET usage, detects call_user_func function calls, the project is marked as primary type and recorded in CSV file with complete project information and function usage details.
 
-- **Boundary:** 项目包含SuperGlobal使用但主要函数和动态include都不存在，系统按照筛选逻辑放弃该项目，不进行记录，确保输出质量。
+- **Boundary:** A project contains SuperGlobal usage but neither primary functions nor dynamic includes exist, the system abandons the project according to filtering logic without recording, ensuring output quality.
 
-- **Interaction:** 当Semgrep分析器检测到动态include语句时，PHPAnalyzer协调主要函数检测和备选检测的结果，ProjectSearcher应用完整的筛选逻辑决定项目命运，CSVExporter格式化所有相关信息输出到结构化报告中。
+- **Interaction:** When Semgrep analyzer detects dynamic include statements, PHPAnalyzer coordinates results from primary function detection and alternative detection, ProjectSearcher applies complete filtering logic to decide project fate, CSVExporter formats all relevant information for output to structured reports.
