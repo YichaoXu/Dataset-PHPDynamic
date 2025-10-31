@@ -104,7 +104,50 @@ params = {
 - **Not currently used** in the primary project workflow
 
 **Why Global Search is Used**:
-The project workflow needs to **discover** new repositories, not analyze specific known repositories. Therefore, global search (without `repo:`) is the appropriate method, as it allows discovering repositories that match the search criteria across all of GitHub.
+
+The project's core goal is to **discover new PHP repositories** on GitHub that contain specific security risk patterns, not to analyze pre-known repositories. This is fundamentally a **discovery problem**, not an analysis problem.
+
+**Key Reasons**:
+
+1. **Unknown Repository List**: 
+   - We don't have a predefined list of repositories to analyze
+   - We need to search across ALL public repositories on GitHub
+   - Global search allows searching millions of repositories simultaneously
+
+2. **Pattern-Based Discovery**:
+   - We're looking for repositories containing specific code patterns (e.g., `call_user_func`, `include $_GET`)
+   - Global Code Search can find these patterns across all repositories
+   - Repository-scoped search requires knowing the repository name first (chicken-and-egg problem)
+
+3. **Search Flow**:
+   ```
+   Problem: Find PHP repos with security risks
+   ↓
+   Global Code Search: "call_user_func language:PHP"
+   ↓
+   Returns: List of files matching the pattern from various repos
+   ↓
+   Extract: Unique repository identifiers (owner/repo)
+   ↓
+   Result: We discovered new repositories to analyze
+   ```
+
+4. **Repository-Scoped Search Limitation**:
+   - Format: `call_user_func language:PHP repo:owner/repo`
+   - **Problem**: Requires knowing `owner/repo` beforehand
+   - **Use Case**: Analyzing a specific known repository
+   - **Not Suitable**: Discovering new repositories (we don't know which repos to search)
+
+5. **Alternative Approaches Considered**:
+   - **Repository Search API** (`/search/repositories`): Searches by metadata (name, description, topics), not code content
+     - Can find: "PHP repositories with 'security' in description"
+     - **Cannot find**: "Repositories containing `call_user_func` code"
+   - **Repository-Scoped Code Search**: Requires repository name
+     - Can search: Specific known repository
+     - **Cannot**: Discover which repositories contain the pattern
+
+**Conclusion**:
+Global Code Search is the **only GitHub API** that can search for code patterns across all repositories without requiring repository names. It's essential for the discovery workflow, as we're searching for repositories based on code content, not repository metadata.
 
 **Response Format**:
 ```json
