@@ -8,6 +8,8 @@ An automated tool for searching and analyzing PHP projects on GitHub with specif
 - **Dynamic Function Detection**: Identifies dynamic function calls like call_user_func, call_user_func_array
 - **Dynamic Include Detection**: Uses Semgrep to detect dynamic file inclusion statements
 - **Strict Filtering Logic**: Multi-layer filtering ensures result quality
+- **Language Filtering**: Automatically filters by PHP language using GitHub's `language:PHP` qualifier
+- **Smart Project Limits**: Configurable project limits (default: 1000) to manage API usage
 - **CSV Export**: Generates structured analysis reports
 
 ## System Requirements
@@ -42,28 +44,100 @@ uv sync --extra dev
 
 ## Configuration
 
-1. Set GitHub API token:
+### Method 1: Configuration File (Recommended)
+
+1. Create configuration file from example:
+```bash
+cp config/config.yml.example config/config.yml
+```
+
+2. Edit `config/config.yml` and set your GitHub API token:
+```yaml
+github:
+  api_token: "your_github_token_here"
+  
+search:
+  max_projects: 1000
+  max_files_per_project: 10
+  search_delay: 0.5
+  default_language: "PHP"
+  
+  # Custom search queries (optional)
+  custom_queries:
+    - "call_user_func language:PHP"
+    - "include $_GET language:PHP"
+
+cache:
+  db_path: "data/cache/github_cache.db"
+  default_expire: 3600
+
+rate_limit:
+  request_delay: 1.0
+
+output:
+  output_dir: "data/output"
+```
+
+**Priority**: Configuration file > Environment variable > Default value
+
+### Method 2: Environment Variable
+
+Alternatively, you can set the GitHub API token via environment variable:
 ```bash
 export GITHUB_TOKEN=your_token_here
 ```
 
-2. Create configuration file (if needed):
-```bash
-cp config/settings.py.example config/settings.py
-```
+**Note**: Configuration file settings take precedence over environment variables.
 
 ## Usage
 
 Run the project using uv:
 ```bash
-uv run python main.py --token your_github_token --output results.csv
+uv run python main.py --token your_github_token --max-projects 1000 --language PHP
 ```
 
 Or activate the virtual environment and run:
 ```bash
 uv shell
-python main.py --token your_github_token --output results.csv
+python main.py --token your_github_token --max-projects 1000 --language PHP
 ```
+
+### Advanced Usage
+
+Search with custom queries and language filtering:
+```bash
+python main.py --token YOUR_TOKEN --queries "call_user_func" "include $_GET" --language PHP --max-projects 500
+```
+
+Search with different language variants:
+```bash
+python main.py --token YOUR_TOKEN --language php --max-projects 2000
+```
+
+## Project Limits and Filtering Strategy
+
+### Why We Need Limits
+
+GitHub hosts millions of repositories, making it impossible to analyze all projects. Our system implements smart filtering to focus on relevant PHP projects:
+
+1. **Language Filtering**: Uses GitHub's `language:PHP` qualifier to only search PHP repositories
+2. **Project Limits**: Default limit of 1000 projects to manage API usage and processing time
+3. **Smart Queries**: Pre-defined queries target specific security patterns
+
+### Recommended Limits
+
+- **Small-scale testing**: 100-500 projects
+- **Production analysis**: 1000-2000 projects  
+- **Large-scale research**: 5000+ projects (with caution)
+
+### API Rate Limiting
+
+GitHub API has rate limits:
+- **Authenticated requests**: 5000 requests/hour
+- **Search API**: 30 requests/minute
+- **Repository API**: 5000 requests/hour
+
+Our system includes automatic rate limiting and caching to respect these limits.
 
 ## Project Structure
 

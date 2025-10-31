@@ -236,6 +236,35 @@ class SearchResult:
         )
 
     @classmethod
+    def from_repository_item(
+        cls,
+        repo_item: Dict[str, Any],
+        analysis_result: Optional[Dict[str, Any]] = None,
+    ) -> "SearchResult":
+        """
+        从GitHub仓库搜索结果创建SearchResult实例
+
+        Args:
+            repo_item: GitHub仓库搜索API返回的项
+            analysis_result: PHP分析结果
+
+        Returns:
+            SearchResult实例
+        """
+        # 从仓库信息中提取数据
+        full_name = repo_item.get("full_name", "")
+        owner, repo_name = full_name.split("/", 1) if "/" in full_name else ("", "")
+
+        return cls(
+            owner=owner,
+            repo_name=repo_name,
+            url=repo_item.get("html_url", ""),
+            commit_hash=repo_item.get("default_branch", "main"),
+            star_count=repo_item.get("stargazers_count", 0),
+            analysis_result=analysis_result,
+        )
+
+    @classmethod
     def from_search_item(
         cls,
         search_item: Dict[str, Any],

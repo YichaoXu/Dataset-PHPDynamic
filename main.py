@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-PHPIncludes - PHP项目动态include/require检测工具
+PHPIncludes - PHP Project Dynamic Include/Require Detection Tool
 
-主程序入口点，提供命令行接口来搜索和分析PHP项目。
+Main program entry point providing command-line interface for searching and analyzing PHP projects.
 """
 
 import argparse
@@ -17,16 +17,16 @@ from src.project_searcher import ProjectSearcher
 
 def create_argument_parser() -> argparse.ArgumentParser:
     """
-    创建命令行参数解析器
+    Create command-line argument parser
 
     Returns:
-        参数解析器
+        Argument parser
     """
     parser = argparse.ArgumentParser(
-        description="PHPIncludes - PHP项目动态include/require检测工具",
+        description="PHPIncludes - PHP Project Dynamic Include/Require Detection Tool",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
-示例用法:
+Example usage:
   python main.py --token YOUR_GITHUB_TOKEN
   python main.py --token YOUR_GITHUB_TOKEN --queries "call_user_func" "include $_GET"
   python main.py --token YOUR_GITHUB_TOKEN --max-projects 50 --no-export
@@ -34,58 +34,65 @@ def create_argument_parser() -> argparse.ArgumentParser:
         """,
     )
 
-    # 必需参数
+    # Required parameters
     parser.add_argument(
         "--token",
         type=str,
-        help="GitHub API访问令牌 (或设置GITHUB_TOKEN环境变量)",
+        help="GitHub API access token (or set GITHUB_TOKEN environment variable)",
     )
 
-    # 可选参数
+    # Optional parameters
     parser.add_argument(
         "--queries",
         nargs="+",
-        help="搜索查询列表 (默认使用预定义查询)",
+        help="Search query list (default uses predefined queries)",
     )
 
     parser.add_argument(
         "--max-projects",
         type=int,
         default=Settings.DEFAULT_MAX_PROJECTS,
-        help=f"最大项目数量 (默认: {Settings.DEFAULT_MAX_PROJECTS})",
+        help=f"Maximum number of projects (default: {Settings.DEFAULT_MAX_PROJECTS})",
+    )
+
+    parser.add_argument(
+        "--language",
+        type=str,
+        default=Settings.DEFAULT_LANGUAGE,
+        help=f"Programming language filter (default: {Settings.DEFAULT_LANGUAGE})",
     )
 
     parser.add_argument(
         "--no-export",
         action="store_true",
-        help="不导出CSV文件",
+        help="Do not export CSV files",
     )
 
     parser.add_argument(
         "--include-unqualified",
         action="store_true",
-        help="在CSV中包含不符合条件的项目",
+        help="Include unqualified projects in CSV",
     )
 
     parser.add_argument(
         "--output-dir",
         type=str,
         default=Settings.OUTPUT_DIR,
-        help=f"输出目录 (默认: {Settings.OUTPUT_DIR})",
+        help=f"Output directory (default: {Settings.OUTPUT_DIR})",
     )
 
     parser.add_argument(
         "--cache-dir",
         type=str,
         default=Settings.CACHE_DB_PATH,
-        help=f"缓存目录 (默认: {Settings.CACHE_DB_PATH})",
+        help=f"Cache directory (default: {Settings.CACHE_DB_PATH})",
     )
 
     parser.add_argument(
         "--verbose",
         "-v",
         action="store_true",
-        help="详细输出",
+        help="Verbose output",
     )
 
     parser.add_argument(
@@ -99,47 +106,54 @@ def create_argument_parser() -> argparse.ArgumentParser:
 
 def validate_arguments(args: argparse.Namespace) -> None:
     """
-    验证命令行参数
+    Validate command-line arguments
 
     Args:
-        args: 解析后的参数
+        args: Parsed arguments
 
     Raises:
-        ValueError: 参数验证失败
+        ValueError: Argument validation failed
     """
     if args.max_projects <= 0:
         raise ValueError("max-projects must be greater than 0")
 
     if args.max_projects > 1000:
-        print("⚠️ 警告: max-projects超过1000可能导致API限制问题")
+        print("⚠️ Warning: max-projects over 1000 may cause API rate limit issues")
 
-    # 验证输出目录
+    if args.max_projects > 5000:
+        print(
+            "⚠️ Warning: max-projects over 5000 may take a very long time and hit API limits"
+        )
+
+    # Validate output directory
     output_path = Path(args.output_dir)
     try:
         output_path.mkdir(parents=True, exist_ok=True)
     except Exception as e:
-        raise ValueError(f"无法创建输出目录 {args.output_dir}: {e}") from e
+        raise ValueError(
+            f"Cannot create output directory {args.output_dir}: {e}"
+        ) from e
 
-    # 验证缓存目录
+    # Validate cache directory
     cache_path = Path(args.cache_dir)
     try:
         cache_path.parent.mkdir(parents=True, exist_ok=True)
     except Exception as e:
-        raise ValueError(f"无法创建缓存目录 {args.cache_dir}: {e}") from e
+        raise ValueError(f"Cannot create cache directory {args.cache_dir}: {e}") from e
 
 
 def get_github_token(args: argparse.Namespace) -> str:
     """
-    获取GitHub API令牌
+    Get GitHub API token
 
     Args:
-        args: 命令行参数
+        args: Command-line arguments
 
     Returns:
-        GitHub API令牌
+        GitHub API token
 
     Raises:
-        ValueError: 令牌未找到
+        ValueError: Token not found
     """
     if args.token:
         return args.token
@@ -149,12 +163,12 @@ def get_github_token(args: argparse.Namespace) -> str:
     except ValueError as e:
         raise ValueError(
             f"{e}\n"
-            f"请使用 --token 参数或设置 {Settings.GITHUB_API_TOKEN_ENV} 环境变量"
+            f"Please use --token parameter or set {Settings.GITHUB_API_TOKEN_ENV} environment variable"
         ) from e
 
 
 def print_banner() -> None:
-    """打印程序横幅"""
+    """Print program banner"""
     info = Settings.get_project_info()
     print("=" * 60)
     print(f"🔍 {info['name']} v{info['version']}")
@@ -164,66 +178,67 @@ def print_banner() -> None:
 
 def print_config_summary(args: argparse.Namespace) -> None:
     """
-    打印配置摘要
+    Print configuration summary
 
     Args:
-        args: 命令行参数
+        args: Command-line arguments
     """
-    print("\n📋 配置摘要:")
-    print(f"  • 最大项目数: {args.max_projects}")
-    print(f"  • 输出目录: {args.output_dir}")
-    print(f"  • 缓存目录: {args.cache_dir}")
-    print(f"  • 导出CSV: {'否' if args.no_export else '是'}")
-    print(f"  • 包含不符合条件项目: {'是' if args.include_unqualified else '否'}")
+    print("\n📋 Configuration Summary:")
+    print(f"  • Maximum projects: {args.max_projects}")
+    print(f"  • Language filter: {args.language}")
+    print(f"  • Output directory: {args.output_dir}")
+    print(f"  • Cache directory: {args.cache_dir}")
+    print(f"  • Export CSV: {'No' if args.no_export else 'Yes'}")
+    print(f"  • Include unqualified: {'Yes' if args.include_unqualified else 'No'}")
 
 
 def print_search_queries(queries: List[str]) -> None:
     """
-    打印搜索查询
+    Print search queries
 
     Args:
-        queries: 搜索查询列表
+        queries: Search query list
     """
-    print(f"\n🔍 搜索查询 ({len(queries)}个):")
+    print(f"\n🔍 Search Queries ({len(queries)}):")
     for i, query in enumerate(queries, 1):
         print(f"  {i}. {query}")
 
 
 def main() -> int:
     """
-    主函数
+    Main function
 
     Returns:
-        退出码
+        Exit code
     """
     try:
-        # 解析命令行参数
+        # Parse command-line arguments
         parser = create_argument_parser()
         args = parser.parse_args()
 
-        # 打印横幅
+        # Print banner
         print_banner()
 
-        # 验证参数
+        # Validate arguments
         validate_arguments(args)
 
-        # 获取GitHub令牌
+        # Get GitHub token
         github_token = get_github_token(args)
 
-        # 获取搜索查询
-        search_queries = Settings.get_search_queries(args.queries)
+        # Get search queries with language filtering
+        search_queries = Settings.get_search_queries(args.queries, args.language)
 
-        # 打印配置摘要
+        # Print configuration summary
         print_config_summary(args)
         print_search_queries(search_queries)
 
-        # 创建项目搜索器
-        print("\n🚀 初始化项目搜索器...")
+        # Create project searcher
+        print("\n🚀 Initializing project searcher...")
         searcher = ProjectSearcher(github_token)
 
         try:
-            # 执行搜索
-            print("\n🔍 开始搜索和分析项目...")
+            # Execute search
+            print("\n🔍 Starting project search and analysis...")
             searcher.search_projects(
                 search_queries=search_queries,
                 max_projects=args.max_projects,
@@ -231,49 +246,49 @@ def main() -> int:
                 include_unqualified=args.include_unqualified,
             )
 
-            # 打印结果摘要
+            # Print result summary
             stats = searcher.get_search_statistics()
-            print("\n✅ 搜索完成!")
-            print(f"  • 总项目数: {stats['total_searched']}")
-            print(f"  • 符合条件: {stats['qualified_projects']}")
-            print(f"  • 不符合条件: {stats['rejected_projects']}")
-            print(f"  • 分析错误: {stats['error_projects']}")
+            print("\n✅ Search completed!")
+            print(f"  • Total projects: {stats['total_searched']}")
+            print(f"  • Qualified: {stats['qualified_projects']}")
+            print(f"  • Rejected: {stats['rejected_projects']}")
+            print(f"  • Analysis errors: {stats['error_projects']}")
 
             if stats["qualified_projects"] > 0:
-                print(f"\n🎉 找到 {stats['qualified_projects']} 个符合条件的项目!")
+                print(f"\n🎉 Found {stats['qualified_projects']} qualified projects!")
             else:
-                print("\n😔 未找到符合条件的项目")
+                print("\n😔 No qualified projects found")
 
             return 0
 
         finally:
-            # 清理资源
+            # Cleanup resources
             searcher.close()
 
     except KeyboardInterrupt:
-        print("\n\n⏹️ 用户中断操作")
+        print("\n\n⏹️ User interrupted operation")
         return 130
 
     except ValueError as e:
-        print(f"\n❌ 参数错误: {e}")
+        print(f"\n❌ Parameter error: {e}")
         return 1
 
     except GitHubAPIError as e:
-        print(f"\n❌ GitHub API错误: {e}")
+        print(f"\n❌ GitHub API error: {e}")
         if args.verbose:
-            print(f"   状态码: {e.status_code}")
-            print(f"   响应数据: {e.response_data}")
+            print(f"   Status code: {e.status_code}")
+            print(f"   Response data: {e.response_data}")
         return 2
 
     except AnalysisError as e:
-        print(f"\n❌ 分析错误: {e}")
+        print(f"\n❌ Analysis error: {e}")
         if args.verbose:
-            print(f"   文件路径: {e.file_path}")
-            print(f"   行号: {e.line_number}")
+            print(f"   File path: {e.file_path}")
+            print(f"   Line number: {e.line_number}")
         return 3
 
     except Exception as e:
-        print(f"\n❌ 未预期的错误: {e}")
+        print(f"\n❌ Unexpected error: {e}")
         if args.verbose:
             import traceback
 

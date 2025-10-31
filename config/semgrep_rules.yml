@@ -1,71 +1,88 @@
 rules:
   # 检测动态include语句
+  # 策略：匹配所有 include $EXPR; 但排除纯字符串字面量
+  # $EXPR 是 Semgrep 元变量，匹配任意表达式
+  # 会匹配：
+  #   - include $file; (变量)
+  #   - include $_GET['page']; (数组访问)
+  #   - include $base . $path; (字符串拼接)
+  #   - include getFile(); (函数调用)
+  #   - include "base_$var.php"; (格式字符串，包含变量)
+  # 不匹配：
+  #   - include "file.php"; (纯字符串字面量，不包含变量)
+  #   - include 'file.php'; (纯字符串字面量，不包含变量)
   - id: dynamic-include-detection
-    message: "Dynamic include statement detected"
+    message: "Dynamic include statement detected: include $EXPR"
     languages: [php]
     severity: WARNING
     patterns:
       - pattern-either:
           - pattern: include $EXPR;
           - pattern: include($EXPR);
-        metavariable-regex:
-          metavariable: $EXPR
-          regex: '.*\$.*'
+    # 排除纯字符串字面量（使用正则检查：不包含变量的字符串）
+    # 注意：格式字符串 "base_$var.php" 包含变量，会被匹配
+    - metavariable-regex:
+        metavariable: $EXPR
+        # 正则解释：
+        # - (?!^"[^$"]*"$) - 排除不包含$的纯双引号字符串
+        # - (?!^'[^$']*'$) - 排除不包含$的纯单引号字符串
+        # - .* - 匹配其他所有表达式（变量、数组、函数调用、拼接等）
+        regex: '(?!^"[^$"]*"$|^\'[^$\']*\'$).*'
     metadata:
       category: security
       confidence: MEDIUM
-      description: "Detects dynamic include statements with variable expressions"
+      description: "Detects dynamic include statements with non-string-literal expressions (excluding pure string literals, but including format strings with variables like \"base_$var.php\")"
 
   # 检测动态include_once语句
   - id: dynamic-include-once-detection
-    message: "Dynamic include_once statement detected"
+    message: "Dynamic include_once statement detected: include_once $EXPR"
     languages: [php]
     severity: WARNING
     patterns:
       - pattern-either:
           - pattern: include_once $EXPR;
           - pattern: include_once($EXPR);
-        metavariable-regex:
-          metavariable: $EXPR
-          regex: '.*\$.*'
+    - metavariable-regex:
+        metavariable: $EXPR
+        regex: '(?!^"[^$"]*"$|^\'[^$\']*\'$).*'
     metadata:
       category: security
       confidence: MEDIUM
-      description: "Detects dynamic include_once statements with variable expressions"
+      description: "Detects dynamic include_once statements with non-string-literal expressions (excluding pure string literals, but including format strings with variables)"
 
   # 检测动态require语句
   - id: dynamic-require-detection
-    message: "Dynamic require statement detected"
+    message: "Dynamic require statement detected: require $EXPR"
     languages: [php]
     severity: WARNING
     patterns:
       - pattern-either:
           - pattern: require $EXPR;
           - pattern: require($EXPR);
-        metavariable-regex:
-          metavariable: $EXPR
-          regex: '.*\$.*'
+    - metavariable-regex:
+        metavariable: $EXPR
+        regex: '(?!^"[^$"]*"$|^\'[^$\']*\'$).*'
     metadata:
       category: security
       confidence: MEDIUM
-      description: "Detects dynamic require statements with variable expressions"
+      description: "Detects dynamic require statements with non-string-literal expressions (excluding pure string literals, but including format strings with variables)"
 
   # 检测动态require_once语句
   - id: dynamic-require-once-detection
-    message: "Dynamic require_once statement detected"
+    message: "Dynamic require_once statement detected: require_once $EXPR"
     languages: [php]
     severity: WARNING
     patterns:
       - pattern-either:
           - pattern: require_once $EXPR;
           - pattern: require_once($EXPR);
-        metavariable-regex:
-          metavariable: $EXPR
-          regex: '.*\$.*'
+    - metavariable-regex:
+        metavariable: $EXPR
+        regex: '(?!^"[^$"]*"$|^\'[^$\']*\'$).*'
     metadata:
       category: security
       confidence: MEDIUM
-      description: "Detects dynamic require_once statements with variable expressions"
+      description: "Detects dynamic require_once statements with non-string-literal expressions (excluding pure string literals, but including format strings with variables)"
 
   # 检测字符串拼接的include
   - id: string-concatenation-include

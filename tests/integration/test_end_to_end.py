@@ -63,7 +63,7 @@ rules:
         """创建模拟的GitHub客户端"""
         mock_client = Mock()
 
-        # 模拟搜索代码结果
+        # 模拟搜索代码结果（修复后的方法）
         mock_client.search_code_content.return_value = [
             {
                 "repository": {
@@ -74,6 +74,18 @@ rules:
                     "stargazers_count": 100,
                 },
                 "path": "index.php",
+            }
+        ]
+
+        # 模拟优化的仓库搜索结果（保留兼容性）
+        mock_client.search_repositories_optimized.return_value = [
+            {
+                "full_name": "test/php-project",
+                "owner": {"login": "test"},
+                "name": "php-project",
+                "html_url": "https://github.com/test/php-project",
+                "stargazers_count": 100,
+                "default_branch": "main",
             }
         ]
 

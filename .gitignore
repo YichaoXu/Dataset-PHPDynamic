@@ -36,6 +36,7 @@ data/
 # Configuration files with secrets
 .env
 config/secrets.py
+config/config.yml
 
 # Test coverage
 htmlcov/

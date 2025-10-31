@@ -1,0 +1,97 @@
+# PHPIncludes Configuration File
+# Copy this file to config.yml and modify as needed
+
+# GitHub API Configuration
+github:
+  # GitHub API Token (Personal Access Token)
+  # Get your token from: https://github.com/settings/tokens
+  # Leave empty to use GITHUB_TOKEN environment variable
+  api_token: ""
+  
+  # API Base URL (usually don't need to change)
+  base_url: "https://api.github.com"
+
+# Search Configuration
+search:
+  # Maximum number of projects to search
+  max_projects: 1000
+  
+  # Maximum number of PHP files to analyze per project
+  max_files_per_project: 10
+  
+  # Delay between API requests (seconds)
+  search_delay: 0.5
+  
+  # Language filter for search queries
+  default_language: "PHP"
+  
+  # Custom search queries (optional)
+  # Leave empty to use default queries
+  custom_queries: []
+  # Example:
+  # custom_queries:
+  #   - "call_user_func language:PHP"
+  #   - "include $_GET language:PHP"
+
+# Cache Configuration
+cache:
+  # Cache database path
+  db_path: "data/cache/github_cache.db"
+  
+  # Default cache expiration time (seconds)
+  default_expire: 3600  # 1 hour
+  
+  # Cache cleanup interval (seconds)
+  cleanup_interval: 86400  # 24 hours
+
+# Rate Limiting Configuration
+rate_limit:
+  # Default delay between requests (seconds)
+  request_delay: 1.0
+  
+  # Rate limit wait threshold (seconds)
+  wait_threshold: 3600  # 1 hour
+
+# Semgrep Configuration
+semgrep:
+  # Semgrep rules file path
+  rules_file: "config/semgrep_rules.yml"
+  
+  # Semgrep execution timeout (seconds)
+  timeout: 30
+  
+  # Semgrep validation timeout (seconds)
+  validation_timeout: 10
+
+# PHP Analysis Configuration
+php_analysis:
+  # PHP file extensions to analyze
+  file_extensions:
+    - ".php"
+    - ".phtml"
+    - ".php3"
+    - ".php4"
+    - ".php5"
+  
+  # Number of context lines to include in analysis
+  context_lines: 3
+
+# Output Configuration
+output:
+  # Output directory for CSV files
+  output_dir: "data/output"
+  
+  # CSV file encoding
+  encoding: "utf-8"
+  
+  # CSV delimiter
+  delimiter: ","
+
+# Logging Configuration
+logging:
+  # Log level: DEBUG, INFO, WARNING, ERROR, CRITICAL
+  log_level: "INFO"
+  
+  # Log format
+  log_format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+
