@@ -5,6 +5,8 @@ PHP代码分析器
 """
 
 import re
+import tempfile
+from pathlib import Path
 from typing import Any, Dict, Optional
 
 from .exceptions import AnalysisError
@@ -106,7 +108,7 @@ class PHPAnalyzer:
         except Exception as e:
             raise AnalysisError(
                 f"Failed to analyze file {file_path}: {e}", file_path=file_path
-            )
+            ) from e
 
     def check_superglobal_requirement(self, content: str) -> Dict[str, Any]:
         """
@@ -178,6 +180,8 @@ class PHPAnalyzer:
         """
         检查变量函数调用（$var() 和 $$var()）
         使用Semgrep进行精确检测，类似于AST分析中的ast_call节点检查
+        在AST分析中，我们会检查ast_call节点的func是expr类型（变量表达式）
+        Semgrep内部使用AST分析，可以精确匹配 $VAR(...) 和 $$VAR(...) 模式
 
         Args:
             content: PHP代码内容
@@ -185,15 +189,16 @@ class PHPAnalyzer:
         Returns:
             检查结果字典
         """
+        temp_file_path = None
         try:
             # 使用Semgrep检测变量函数调用
-            semgrep_results = self.semgrep_analyzer.run_semgrep(
-                self._create_temp_file(content)
-            )
+            # 创建临时文件用于Semgrep分析
+            temp_file_path = self._create_temp_file(content)
+            semgrep_results = self.semgrep_analyzer.run_semgrep(temp_file_path)
 
             usage = []
             for result in semgrep_results:
-                # 只提取变量函数调用的检测结果
+                # 只提取变量函数调用的检测结果（rule_id: variable-function-call）
                 if result.get("rule_id") == "variable-function-call":
                     usage.append(
                         {
@@ -212,12 +217,20 @@ class PHPAnalyzer:
             return {
                 "found": len(usage) > 0,
                 "usage": usage,
-                "semgrep_results": [r for r in semgrep_results if r.get("rule_id") == "variable-function-call"],
+                "semgrep_results": [
+                    r
+                    for r in semgrep_results
+                    if r.get("rule_id") == "variable-function-call"
+                ],
             }
 
         except Exception:
             # 如果Semgrep失败，使用正则表达式fallback
             return self._fallback_variable_function_detection(content)
+        finally:
+            # 清理临时文件
+            if temp_file_path:
+                Path(temp_file_path).unlink(missing_ok=True)
 
     def _fallback_variable_function_detection(self, content: str) -> Dict[str, Any]:
         """
@@ -264,7 +277,6 @@ class PHPAnalyzer:
         Returns:
             临时文件路径
         """
-        import tempfile
 
         temp_file = tempfile.NamedTemporaryFile(
             mode="w", suffix=".php", delete=False
