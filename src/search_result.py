@@ -4,6 +4,7 @@
 本模块定义了搜索结果的数据结构，用于存储项目信息和分析结果。
 """
 
+import re
 from typing import Any, Dict, List, Optional
 
 
@@ -50,21 +51,85 @@ class SearchResult:
 
     @property
     def superglobal_usage(self) -> List[str]:
-        """获取SuperGlobal使用情况"""
+        """获取SuperGlobal使用情况（去重后的SuperGlobal类型）"""
         usage = self.analysis_result.get("superglobal_usage", [])
-        return [item.get("pattern", "") for item in usage]
+        # 提取实际的SuperGlobal变量名（从pattern或match中）
+        superglobals = set()
+        for item in usage:
+            match = item.get("match", "")
+            pattern = item.get("pattern", "")
+            # 从匹配内容或模式中提取SuperGlobal类型
+            if match:
+                # 提取 $_VAR 格式
+                matches = re.findall(
+                    r"\$_(GET|POST|REQUEST|COOKIE|SESSION|SERVER|FILES|ENV)",
+                    match,
+                    re.IGNORECASE,
+                )
+                superglobals.update(m.upper() for m in matches)
+            elif pattern:
+                matches = re.findall(
+                    r"\$_(GET|POST|REQUEST|COOKIE|SESSION|SERVER|FILES|ENV)",
+                    pattern,
+                    re.IGNORECASE,
+                )
+                superglobals.update(m.upper() for m in matches)
+        return sorted(superglobals)
 
     @property
     def function_usage(self) -> List[str]:
-        """获取动态函数使用情况"""
+        """获取动态函数使用情况（去重后的函数名）"""
         usage = self.analysis_result.get("dynamic_function_usage", [])
-        return [item.get("pattern", "") for item in usage]
+        # 提取函数名称
+        functions = set()
+        for item in usage:
+            match = item.get("match", "")
+            pattern = item.get("pattern", "")
+            rule_id = item.get("rule_id", "")
+
+            # 如果是Semgrep检测的变量函数调用
+            if rule_id == "variable-function-call":
+                functions.add("variable_function_call")
+            elif match:
+                # 提取函数名：call_user_func, call_user_func_array, forward_static_call, forward_static_call_array
+                func_matches = re.findall(
+                    r"(call_user_func(?:_array)?|forward_static_call(?:_array)?)",
+                    match,
+                    re.IGNORECASE,
+                )
+                functions.update(m.lower() for m in func_matches)
+            elif pattern:
+                func_matches = re.findall(
+                    r"(call_user_func(?:_array)?|forward_static_call(?:_array)?)",
+                    pattern,
+                    re.IGNORECASE,
+                )
+                functions.update(m.lower() for m in func_matches)
+        return sorted(functions)
 
     @property
     def dynamic_include_usage(self) -> List[str]:
-        """获取动态include使用情况"""
+        """获取动态include使用情况（去重后的类型）"""
         usage = self.analysis_result.get("dynamic_include_usage", [])
-        return [item.get("rule_id", "") for item in usage]
+        # 提取include类型
+        include_types = set()
+        for item in usage:
+            rule_id = item.get("rule_id", "")
+            if rule_id:
+                # 从rule_id提取类型：dynamic-include-detection -> include
+                if "include" in rule_id:
+                    include_types.add("include")
+                elif "require" in rule_id:
+                    include_types.add("require")
+            else:
+                # 从pattern中提取
+                pattern = item.get("pattern", "")
+                if pattern:
+                    matches = re.findall(
+                        r"(include|require)(?:_once)?", pattern, re.IGNORECASE
+                    )
+                    include_types.update(m.lower() for m in matches)
+        return sorted(include_types)
 
     @property
     def is_qualified(self) -> bool:
@@ -132,17 +197,18 @@ class SearchResult:
 
     def _format_usage_list(self, usage_list: List[str]) -> str:
         """
-        格式化使用情况列表为字符串
+        格式化使用情况列表为字符串（去重并格式化）
 
         Args:
-            usage_list: 使用情况列表
+            usage_list: 使用情况列表（已经去重）
 
         Returns:
             格式化后的字符串
         """
         if not usage_list:
             return ""
-        return "; ".join(usage_list)
+        # 使用逗号连接，更易读
+        return ", ".join(usage_list)
 
     def get_detailed_analysis(self) -> Dict[str, Any]:
         """
