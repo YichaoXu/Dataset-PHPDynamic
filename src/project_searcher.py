@@ -140,6 +140,14 @@ class ProjectSearcher:
             print(f"   After deduplication: {after_dedup} results")
             print(f"   Duplicates removed: {before_dedup - after_dedup}")
 
+            # 3.5. Limit to max_projects
+            if len(unique_results) > max_projects:
+                print(
+                    f"\n⚠️  Limiting results to max_projects={max_projects} (had {len(unique_results)} unique repositories)"
+                )
+                unique_results = unique_results[:max_projects]
+                print(f"   Limited to: {len(unique_results)} repositories")
+
             # 4. Apply filtering logic
             print(f"\n{'='*60}")
             print(f"📊 Starting Analysis: {len(unique_results)} projects...")
@@ -361,8 +369,10 @@ class ProjectSearcher:
         try:
             # 1. Use Code Search API to find repositories containing specific code
             print("  🔍 Searching repositories with Code Search API...")
+            # Note: max_projects is the limit for total repositories, not per-page results
+            # We use per_page=100 (GitHub's max) to get more results, then limit later
             code_search_results = self.github_client.search_code_content(
-                query, language="PHP", per_page=max_projects
+                query, language="PHP", per_page=100  # Use max per_page to get more results
             )
 
             print(f"  📥 Received {len(code_search_results)} code search results")

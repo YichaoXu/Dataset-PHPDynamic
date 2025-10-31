@@ -139,6 +139,146 @@ GitHub API has rate limits:
 
 Our system includes automatic rate limiting and caching to respect these limits.
 
+## GitHub API Reference
+
+The project uses the GitHub REST API v3 to search for PHP repositories, analyze code, and retrieve file contents.
+
+**Base URL**: `https://api.github.com`
+
+### Authentication
+
+All API requests use personal access tokens for authentication:
+- **Header**: `Authorization: token <GITHUB_TOKEN>`
+- **Environment Variable**: `GITHUB_TOKEN`
+- **Configuration File**: `config/config.yml` → `github.api_token`
+
+### API Endpoints Used
+
+#### 1. Code Search API
+
+**Endpoint**: `GET /search/code`
+
+**Purpose**: Primary method to discover PHP repositories containing specific code patterns.
+
+**Query Format**:
+```
+{pattern} language:PHP
+```
+
+**Example**:
+```
+call_user_func language:PHP
+include $_GET language:PHP
+```
+
+**Key Features**:
+- Searches across all public repositories (global search)
+- Returns file paths and repository information
+- Results are deduplicated by repository name
+- **Rate Limit**: 30 requests/minute (authenticated)
+
+**Response Fields Used**:
+- `items[].repository.full_name`: Repository identifier
+- `items[].path`: File path containing the match
+- `items[].repository.html_url`: Repository URL
+
+#### 2. File Content API
+
+**Endpoint**: `GET /repos/{owner}/{repo}/contents/{path}`
+
+**Purpose**: Fetch complete PHP file contents for analysis.
+
+**Features**:
+- Returns base64-encoded file content (requires decoding)
+- **Rate Limit**: 5000 requests/hour (authenticated)
+- **Limit**: Maximum 10 files per repository
+
+#### 3. Repository Contents API
+
+**Endpoint**: `GET /repos/{owner}/{repo}/contents`
+
+**Purpose**: Fallback method to list repository files when Code Search API doesn't provide file paths.
+
+**Features**:
+- Lists root directory contents
+- Filtered to PHP files only
+- **Rate Limit**: 5000 requests/hour (authenticated)
+
+#### 4. Repository Info API
+
+**Endpoint**: `GET /repos/{owner}/{repo}`
+
+**Purpose**: Get repository metadata (stars, description, etc.).
+
+**Rate Limit**: 5000 requests/hour (authenticated)
+
+### API Request Flow
+
+1. **Code Search API**: Search for code patterns (`call_user_func language:PHP`)
+   - Returns: List of files containing the pattern from various repositories
+
+2. **Extract Repository Information**: 
+   - Extract unique repository identifiers from results
+   - Collect matched file paths for each repository
+   - Deduplicate repositories
+
+3. **File Content API**: 
+   - Fetch complete file contents for matched files
+   - Uses file paths directly from Code Search results
+
+4. **Analysis**: 
+   - Use Semgrep and regex to analyze file contents locally
+   - Detect security risk patterns
+
+### Rate Limiting & Caching
+
+**Rate Limits**:
+- Code Search API: 30 requests/minute
+- Repository APIs: 5000 requests/hour
+
+**Caching**:
+All API responses are cached using SQLite database:
+- Code Search: 1 hour cache
+- File Content: 30 minutes cache
+- Repository Info: 1 hour cache
+
+**Automatic Handling**:
+- Pre-request rate limit checks
+- Automatic wait if approaching limits
+- Exponential backoff for errors
+
+### Why Code Search API?
+
+The project uses **Code Search API** (not Repository Search API) because:
+- **Code content search**: Finds repositories containing specific code patterns
+- **Combined filtering**: `language:PHP` + code pattern in one query
+- **Efficiency**: Returns only relevant repositories, avoiding millions of irrelevant ones
+- **Repository Search API limitation**: Searches by metadata (name, description), not code content
+
+### Error Handling
+
+Common HTTP status codes:
+- `200`: Success
+- `401`: Unauthorized (invalid token)
+- `403`: Forbidden (rate limit exceeded)
+- `404`: Not Found (file/repository doesn't exist)
+- `422`: Unprocessable Entity (invalid query format)
+- `429`: Too Many Requests (rate limit exceeded)
+
+The system includes automatic error handling with retry logic.
+
+### API Usage
+
+**Estimated usage per 100 projects**:
+- Code Search: 4-8 requests
+- File Content: 100-1000 requests
+- Total: ~104-1018 requests (within 5000/hour limit)
+
+**Reference Links**:
+- [GitHub REST API Documentation](https://docs.github.com/en/rest)
+- [Code Search API](https://docs.github.com/en/rest/search/search#search-code)
+- [Rate Limiting](https://docs.github.com/en/rest/rate-limit)
+
 ## Project Structure
 
 ```
