@@ -48,6 +48,13 @@ class CSVExporter:
 
         output_path = self.output_dir / filename
 
+        # 检查输出路径是否是目录（不应该发生，但如果存在同名目录会阻止文件创建）
+        if output_path.exists() and output_path.is_dir():
+            raise ValueError(
+                f"Output path is a directory, not a file: {output_path}. "
+                f"Please remove the directory or use a different filename."
+            )
+
         # 过滤结果
         filtered_results = self._filter_results(results, include_unqualified)
 
@@ -81,6 +88,13 @@ class CSVExporter:
             filename = f"php_projects_summary_{timestamp}.csv"
 
         output_path = self.output_dir / filename
+
+        # 检查输出路径是否是目录
+        if output_path.exists() and output_path.is_dir():
+            raise ValueError(
+                f"Output path is a directory, not a file: {output_path}. "
+                f"Please remove the directory or use a different filename."
+            )
 
         # 生成摘要数据
         summary_data = self._generate_summary_data(results)
@@ -296,6 +310,13 @@ class CSVExporter:
             filename = f"php_projects_detailed_{timestamp}.csv"
 
         output_path = self.output_dir / filename
+
+        # 检查输出路径是否是目录
+        if output_path.exists() and output_path.is_dir():
+            raise ValueError(
+                f"Output path is a directory, not a file: {output_path}. "
+                f"Please remove the directory or use a different filename."
+            )
 
         # 生成详细数据
         detailed_data = []

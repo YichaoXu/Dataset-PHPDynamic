@@ -81,10 +81,16 @@ class PHPAnalyzer:
                 }
                 return result
 
-            # 2. 检查主要动态函数
+            # 2. 检查主要动态函数（call_user_func等）
             function_result = self.check_primary_functions(content)
             result["has_dynamic_functions"] = function_result["found"]
             result["dynamic_function_usage"] = function_result["usage"]
+
+            # 2b. 检查变量函数调用（$var() 和 $$var()）
+            variable_function_result = self.check_variable_functions(content)
+            if variable_function_result["found"]:
+                result["has_dynamic_functions"] = True
+                result["dynamic_function_usage"].extend(variable_function_result["usage"])
 
             # 3. 如果主要函数不存在，检查fallback includes
             if not result["has_dynamic_functions"]:
@@ -137,7 +143,7 @@ class PHPAnalyzer:
 
     def check_primary_functions(self, content: str) -> Dict[str, Any]:
         """
-        检查主要动态函数调用
+        检查主要动态函数调用（call_user_func等）
 
         Args:
             content: PHP代码内容
@@ -167,6 +173,106 @@ class PHPAnalyzer:
             "usage": usage,
             "patterns_found": list(found_patterns),
         }
+
+    def check_variable_functions(self, content: str) -> Dict[str, Any]:
+        """
+        检查变量函数调用（$var() 和 $$var()）
+        使用Semgrep进行精确检测，类似于AST分析中的ast_call节点检查
+
+        Args:
+            content: PHP代码内容
+
+        Returns:
+            检查结果字典
+        """
+        try:
+            # 使用Semgrep检测变量函数调用
+            semgrep_results = self.semgrep_analyzer.run_semgrep(
+                self._create_temp_file(content)
+            )
+
+            usage = []
+            for result in semgrep_results:
+                # 只提取变量函数调用的检测结果
+                if result.get("rule_id") == "variable-function-call":
+                    usage.append(
+                        {
+                            "rule_id": result["rule_id"],
+                            "pattern": "variable-function-call",
+                            "line_number": result["line_number"],
+                            "message": result["message"],
+                            "severity": result["severity"],
+                            "code_snippet": result.get("code_snippet", ""),
+                            "context": self._get_context_by_line(
+                                content, result["line_number"]
+                            ),
+                        }
+                    )
+
+            return {
+                "found": len(usage) > 0,
+                "usage": usage,
+                "semgrep_results": [r for r in semgrep_results if r.get("rule_id") == "variable-function-call"],
+            }
+
+        except Exception:
+            # 如果Semgrep失败，使用正则表达式fallback
+            return self._fallback_variable_function_detection(content)
+
+    def _fallback_variable_function_detection(self, content: str) -> Dict[str, Any]:
+        """
+        使用正则表达式的fallback变量函数检测
+
+        Args:
+            content: PHP代码内容
+
+        Returns:
+            检测结果字典
+        """
+        # 匹配 $var() 和 $$var() 形式的变量函数调用
+        variable_function_patterns = [
+            r"\$\w+\s*\(",  # $var(
+            r"\$\$\w+\s*\(",  # $$var(
+        ]
+
+        usage = []
+        for pattern in variable_function_patterns:
+            matches = re.finditer(pattern, content)
+            for match in matches:
+                line_number = content[: match.start()].count("\n") + 1
+                usage.append(
+                    {
+                        "pattern": pattern,
+                        "line_number": line_number,
+                        "match": match.group(),
+                        "context": self._get_context(content, match.start()),
+                    }
+                )
+
+        return {
+            "found": len(usage) > 0,
+            "usage": usage,
+        }
+
+    def _create_temp_file(self, content: str) -> str:
+        """
+        创建临时文件用于Semgrep分析
+
+        Args:
+            content: PHP代码内容
+
+        Returns:
+            临时文件路径
+        """
+        import tempfile
+
+        temp_file = tempfile.NamedTemporaryFile(
+            mode="w", suffix=".php", delete=False
+        )
+        temp_file.write(content)
+        temp_file_path = temp_file.name
+        temp_file.close()
+        return temp_file_path
 
     def check_fallback_includes(self, content: str) -> Dict[str, Any]:
         """

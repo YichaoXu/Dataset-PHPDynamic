@@ -19,15 +19,9 @@ rules:
       - pattern-either:
           - pattern: include $EXPR;
           - pattern: include($EXPR);
-    # 排除纯字符串字面量（使用正则检查：不包含变量的字符串）
-    # 注意：格式字符串 "base_$var.php" 包含变量，会被匹配
-    - metavariable-regex:
-        metavariable: $EXPR
-        # 正则解释：
-        # - (?!^"[^$"]*"$) - 排除不包含$的纯双引号字符串
-        # - (?!^'[^$']*'$) - 排除不包含$的纯单引号字符串
-        # - .* - 匹配其他所有表达式（变量、数组、函数调用、拼接等）
-        regex: '(?!^"[^$"]*"$|^\'[^$\']*\'$).*'
+    metavariable-regex:
+      metavariable: $EXPR
+      regex: "(?!^\"[^$\"]*\"$|^'[^$']*'$).*"
     metadata:
       category: security
       confidence: MEDIUM
@@ -42,9 +36,9 @@ rules:
       - pattern-either:
           - pattern: include_once $EXPR;
           - pattern: include_once($EXPR);
-    - metavariable-regex:
-        metavariable: $EXPR
-        regex: '(?!^"[^$"]*"$|^\'[^$\']*\'$).*'
+    metavariable-regex:
+      metavariable: $EXPR
+      regex: "(?!^\"[^$\"]*\"$|^'[^$']*'$).*"
     metadata:
       category: security
       confidence: MEDIUM
@@ -59,9 +53,9 @@ rules:
       - pattern-either:
           - pattern: require $EXPR;
           - pattern: require($EXPR);
-    - metavariable-regex:
-        metavariable: $EXPR
-        regex: '(?!^"[^$"]*"$|^\'[^$\']*\'$).*'
+    metavariable-regex:
+      metavariable: $EXPR
+      regex: "(?!^\"[^$\"]*\"$|^'[^$']*'$).*"
     metadata:
       category: security
       confidence: MEDIUM
@@ -76,9 +70,9 @@ rules:
       - pattern-either:
           - pattern: require_once $EXPR;
           - pattern: require_once($EXPR);
-    - metavariable-regex:
-        metavariable: $EXPR
-        regex: '(?!^"[^$"]*"$|^\'[^$\']*\'$).*'
+    metavariable-regex:
+      metavariable: $EXPR
+      regex: "(?!^\"[^$\"]*\"$|^'[^$']*'$).*"
     metadata:
       category: security
       confidence: MEDIUM
@@ -144,9 +138,9 @@ rules:
       confidence: HIGH
       description: "Detects usage of PHP SuperGlobal variables"
 
-  # 检测动态函数调用
+  # 检测动态函数调用（call_user_func等）
   - id: dynamic-function-call
-    message: "Dynamic function call detected"
+    message: "Dynamic function call detected: call_user_func/call_user_func_array"
     languages: [php]
     severity: WARNING
     patterns:
@@ -158,4 +152,25 @@ rules:
     metadata:
       category: security
       confidence: HIGH
-      description: "Detects dynamic function calls that could be security risks"
+      description: "Detects dynamic function calls using call_user_func family that could be security risks"
+
+  # 检测变量函数调用 $var() 和 $$var()
+  # 匹配模式：
+  #   - $var() - 变量函数调用
+  #   - $$var() - 可变变量函数调用
+  # 这些模式本身已经确保函数名是变量表达式，而不是字符串字面量或标识符
+  # 在PHP中：$VAR(...) 只能匹配 $var()，不能匹配 "func"() 或 strlen()
+  - id: variable-function-call
+    message: "Variable function call detected: $FUNC(...)"
+    languages: [php]
+    severity: WARNING
+    patterns:
+      - pattern-either:
+          # 匹配 $var() 形式的变量函数调用
+          - pattern: $VAR(...)
+          # 匹配 $$var() 形式的可变变量函数调用
+          - pattern: $$VAR(...)
+    metadata:
+      category: security
+      confidence: MEDIUM
+      description: "Detects variable function calls like $var() or $$var() where function name is dynamically determined"
