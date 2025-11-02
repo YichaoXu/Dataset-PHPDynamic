@@ -5,11 +5,10 @@
 [x] Setup project structure
   Depends on: None
   Acceptance: All directories and base files created according to design
-  - [x] Create phpincludes/ directory with __init__.py
+  - [x] Create php_dynctrlflow/ directory with __init__.py
   - [x] Create tests/ directory with __init__.py
   - [x] Create tests/integration/ directory with __init__.py
   - [x] Create data/cache/, data/temp/, data/output/ directories (runtime only)
-  - [x] Create scripts/ directory
   - [x] Create docs/ directory (already exists)
   - [x] Create pyproject.toml with uv dependencies
   - [x] Create .gitignore
@@ -24,7 +23,7 @@
 
 ## Phase 1: 核心基础设施
 
-[x] Implement phpincludes/github_client.py
+[x] Implement php_dynctrlflow/github_client.py
   Depends on: Project structure setup complete
   Acceptance: Client can authenticate and make API requests with rate limiting
   - [x] Create GitHubAPIClient class with authentication
@@ -39,7 +38,7 @@
   - [x] Verify all tests pass
   - [x] Update documentation if needed
 
-[x] Implement phpincludes/cache_manager.py
+[x] Implement php_dynctrlflow/cache_manager.py
   Depends on: Project structure setup complete
   Acceptance: Cache can store/retrieve data with expiration
   - [x] Create CacheManager class with SQLite backend
@@ -54,7 +53,7 @@
   - [x] Verify all tests pass
   - [x] Update documentation if needed
 
-[x] Implement phpincludes/rate_limit_handler.py
+[x] Implement php_dynctrlflow/rate_limit_handler.py
   Depends on: Project structure setup complete
   Acceptance: Handler can detect and manage rate limits
   - [x] Create RateLimitHandler class
@@ -71,7 +70,7 @@
 
 ## Phase 2: 静态分析组件
 
-[x] Implement phpincludes/semgrep_analyzer.py
+[x] Implement php_dynctrlflow/semgrep_analyzer.py
   Depends on: Project structure setup complete
   Acceptance: Analyzer can detect dynamic includes using Semgrep rules
   - [x] Create SemgrepAnalyzer class
@@ -87,7 +86,7 @@
   - [x] Verify all tests pass
   - [x] Update documentation if needed
 
-[x] Create phpincludes/semgrep/rules.yml
+[x] Create php_dynctrlflow/semgrep/rules.yml
   Depends on: SemgrepAnalyzer class ready
   Acceptance: Rules detect dynamic include/require statements correctly
   - [x] Create semgrep/rules.yml file
@@ -106,7 +105,7 @@
   - [x] Verify all tests pass
   - [x] Update documentation if needed
 
-[x] Implement phpincludes/php_analyzer.py
+[x] Implement php_dynctrlflow/php_analyzer.py
   Depends on: SemgrepAnalyzer ready
   Acceptance: Analyzer can detect SuperGlobal, functions, and dynamic includes
   - [x] Create PHPAnalyzer class
@@ -125,7 +124,7 @@
 
 ## Phase 3: 数据模型和结果处理
 
-[x] Implement phpincludes/search_result.py
+[x] Implement php_dynctrlflow/search_result.py
   Depends on: Core classes ready
   Acceptance: Result can store project data and convert to CSV format
   - [x] Create SearchResult class
@@ -141,7 +140,7 @@
   - [x] Verify all tests pass
   - [x] Update documentation if needed
 
-[x] Implement phpincludes/csv_exporter.py
+[x] Implement php_dynctrlflow/csv_exporter.py
   Depends on: SearchResult class ready
   Acceptance: Exporter can write results to CSV with proper formatting
   - [x] Create CSVExporter class
@@ -159,7 +158,7 @@
 
 ## Phase 4: 核心协调逻辑
 
-[x] Implement phpincludes/project_searcher.py
+[x] Implement php_dynctrlflow/project_searcher.py
   Depends on: All component classes ready
   Acceptance: Searcher can orchestrate complete filtering workflow
   - [x] Create ProjectSearcher class
@@ -177,7 +176,7 @@
 
 ## Phase 5: 异常处理和配置
 
-[x] Implement phpincludes/exceptions.py
+[x] Implement php_dynctrlflow/exceptions.py
   Depends on: Core classes ready
   Acceptance: All error conditions have appropriate exceptions
   - [x] Create GitHubAPIError exception
@@ -193,7 +192,7 @@
   - [x] Verify all tests pass
   - [x] Update documentation if needed
 
-[x] Create phpincludes/settings.py
+[x] Create php_dynctrlflow/settings.py
   Depends on: All classes implemented
   Acceptance: Project can be configured and run
   - [x] Create settings.py with configuration constants
@@ -240,13 +239,6 @@
   - [x] Verify all tests pass
   - [x] Update documentation if needed
 
-[x] Create scripts/setup.py
-  Depends on: Integration tests passing
-  Acceptance: Project can be easily set up and configured
-  - [x] Create setup script for project initialization
-  - [x] Add dependency installation
-  - [x] Add Semgrep installation check
-  - [x] Add configuration validation
   - [x] Run code quality checks (linting, formatting)
   - [x] Fix all linting errors above threshold
   - [x] Ensure consistent code formatting
@@ -256,7 +248,7 @@
   - [x] Update documentation if needed
 
 [x] Main entry point implementation
-  Depends on: Setup script ready
+  Depends on: All classes implemented
   Acceptance: Analysis can be run with proper configuration via main.py
   - [x] Create main.py as the single entry point
   - [x] Define entry point in pyproject.toml

@@ -1,4 +1,4 @@
-# PHPIncludes Configuration File
+# Dataset-PHPDynCtrlflow Configuration File
 # Copy this file to config.yml and modify as needed
 #
 # This file contains ALL default configuration values.
@@ -44,7 +44,7 @@ rate_limit:
 # Semgrep Configuration
 semgrep:
   # Semgrep rules file path (internal implementation detail)
-  rules_file: "phpincludes/semgrep/rules.yml"
+  rules_file: "php_dynctrlflow/semgrep/rules.yml"
   
   # Semgrep execution timeout (seconds)
   timeout: 30

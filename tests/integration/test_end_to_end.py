@@ -9,14 +9,14 @@ import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
 
-from phpincludes.settings import Settings
-from phpincludes.cache_manager import CacheManager
-from phpincludes.csv_exporter import CSVExporter
-from phpincludes.exceptions import AnalysisError, GitHubAPIError
-from phpincludes.project_searcher import ProjectSearcher
-from phpincludes.rate_limit_handler import RateLimitHandler
-from phpincludes.search_result import SearchResult
-from phpincludes.semgrep_analyzer import SemgrepAnalyzer
+from php_dynctrlflow.settings import Settings
+from php_dynctrlflow.cache_manager import CacheManager
+from php_dynctrlflow.csv_exporter import CSVExporter
+from php_dynctrlflow.exceptions import AnalysisError, GitHubAPIError
+from php_dynctrlflow.project_searcher import ProjectSearcher
+from php_dynctrlflow.rate_limit_handler import RateLimitHandler
+from php_dynctrlflow.search_result import SearchResult
+from php_dynctrlflow.semgrep_analyzer import SemgrepAnalyzer
 
 
 class TestEndToEndWorkflow(unittest.TestCase):
@@ -136,7 +136,7 @@ if (isset($_POST['action'])) {
         ]
         return mock_analyzer
 
-    @patch("phpincludes.project_searcher.GitHubAPIClient")
+    @patch("php_dynctrlflow.project_searcher.GitHubAPIClient")
     def test_complete_filtering_workflow(self, mock_github_client_class) -> None:
         """测试完整的筛选工作流程"""
         # 设置模拟
@@ -180,7 +180,7 @@ if (isset($_POST['action'])) {
     def test_error_handling_scenarios(self) -> None:
         """测试错误处理场景"""
         # 测试GitHub API错误
-        with patch("phpincludes.project_searcher.GitHubAPIClient") as mock_client_class:
+        with patch("php_dynctrlflow.project_searcher.GitHubAPIClient") as mock_client_class:
             mock_client = Mock()
             mock_client.search_code_content.side_effect = GitHubAPIError(
                 "API request failed", status_code=403
@@ -201,7 +201,7 @@ if (isset($_POST['action'])) {
                 searcher.close()
 
         # 测试分析错误
-        with patch("phpincludes.project_searcher.GitHubAPIClient") as mock_client_class:
+        with patch("php_dynctrlflow.project_searcher.GitHubAPIClient") as mock_client_class:
             mock_client = self._create_mock_github_client()
             mock_client.get_file_content.side_effect = AnalysisError(
                 "File analysis failed", file_path="test.php"
@@ -394,7 +394,7 @@ if (isset($_POST['action'])) {
     def test_edge_cases(self) -> None:
         """测试边界情况"""
         # 测试空搜索结果
-        with patch("phpincludes.project_searcher.GitHubAPIClient") as mock_client_class:
+        with patch("php_dynctrlflow.project_searcher.GitHubAPIClient") as mock_client_class:
             mock_client = Mock()
             mock_client.search_code_content.return_value = []
             mock_client_class.return_value = mock_client

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-PHPIncludes - PHP Project Dataset Collection Tool
+Dataset-PHPDynCtrlflow - PHP Project Dataset Generator
 
 CLI interface for collecting PHP projects from GitHub that meet specific criteria.
 The goal is to obtain accurate datasets of projects with specific characteristics.
@@ -24,13 +24,13 @@ def create_argument_parser() -> argparse.ArgumentParser:
         Argument parser
     """
     parser = argparse.ArgumentParser(
-        description="PHPIncludes - PHP Project Dataset Collection Tool for collecting projects that meet specific criteria",
+        description="Dataset-PHPDynCtrlflow - PHP Project Dataset Generator for generating downloadable datasets of PHP projects with dynamic control flow characteristics",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Example usage:
-  uv run php-includes --token YOUR_GITHUB_TOKEN
-  uv run php-includes --token YOUR_GITHUB_TOKEN --max-projects 50 --no-export
-  uv run php-includes --token YOUR_GITHUB_TOKEN --include-unqualified
+  uv run php-dynctrlflow --token YOUR_GITHUB_TOKEN
+  uv run php-dynctrlflow --token YOUR_GITHUB_TOKEN --max-projects 50 --no-export
+  uv run php-dynctrlflow --token YOUR_GITHUB_TOKEN --include-unqualified
         """,
     )
 

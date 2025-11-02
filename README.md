@@ -1,23 +1,20 @@
-# PHP Project Dataset Collection Tool
+# Dataset-PHPDynCtrlflow
 
-An automated tool for collecting PHP projects from GitHub that meet specific criteria. The goal is to obtain accurate datasets for further analysis.
+An automated dataset generation tool that collects PHP projects from GitHub and generates downloadable datasets in CSV format. This tool identifies PHP projects with specific security risk characteristics and exports them as structured datasets for research and analysis purposes.
 
 ## Features
 
-- **Dataset Collection**: Collects PHP projects from GitHub that meet specific criteria
-- **SuperGlobal Requirement**: Projects must use SuperGlobal parameters ($_GET, $_POST, etc.)
-- **Dynamic Function Detection**: Identifies dynamic function calls like call_user_func, call_user_func_array
-- **Dynamic Include Detection**: Uses Semgrep to detect dynamic file inclusion statements
-- **Strict Filtering Logic**: Multi-layer filtering ensures dataset quality
-- **Language Filtering**: Automatically filters by PHP language using GitHub's `language:PHP` qualifier
-- **Smart Project Limits**: Configurable project limits (default: 1000) to manage API usage
-- **CSV Export**: Generates structured dataset reports
+- **Top Stars Project Selection**: Discovers PHP repositories sorted by star count from GitHub Repository Search API, focusing on popular and well-maintained projects
+- **SuperGlobal Requirement**: Filters projects that must use SuperGlobal parameters ($_GET, $_POST, $_REQUEST, $_COOKIE, $_SESSION, $_SERVER, $_FILES, $_ENV) as a necessary condition
+- **Primary Function Detection**: Detects dynamic function calls like `call_user_func`, `call_user_func_array`, `forward_static_call`, `forward_static_call_array`, and variable function calls (`$var()` and `$$var()`)
+- **Fallback Include Detection**: Uses Semgrep static analysis to detect dynamic file inclusion statements (non-string literal expressions) when primary functions are absent
+- **Strict Multi-Layer Filtering**: Ensures dataset quality through systematic filtering: SuperGlobal validation → Primary function detection → Fallback include detection
+- **CSV Dataset Export**: Generates downloadable CSV datasets containing qualified project information with metadata (project name, owner, URL, commit hash, star count, detection type)
 
 ## System Requirements
 
 - Python 3.9+
 - uv (modern Python package manager)
-- Semgrep
 - GitHub API access token
 
 ## Installation
@@ -30,7 +27,7 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 2. Clone the repository:
 ```bash
 git clone <repository-url>
-cd PHPIncludes
+cd php-dynctrlflow
 ```
 
 3. Install dependencies:
@@ -45,262 +42,190 @@ uv sync --extra dev
 
 ## Configuration
 
-### Method 1: Configuration File (Recommended)
+### Configuration File (Required)
 
 1. Create configuration file from example:
 ```bash
 cp config.yml.example config.yml
 ```
 
-2. Edit `config.yml` and set your GitHub API token:
+2. Edit `config.yml` and set your GitHub API token and dataset generation settings:
 ```yaml
 github:
   api_token: "your_github_token_here"
   
 search:
-  max_projects: 1000
-  max_files_per_project: 10
-  search_delay: 0.5
-  default_language: "PHP"
-  
-  # Custom search queries (optional)
-  custom_queries:
-    - "call_user_func language:PHP"
-    - "include $_GET language:PHP"
+  max_projects: 1000          # Maximum number of repositories to analyze
+  max_files_per_project: 10   # Maximum PHP files to analyze per repository
 
 cache:
   db_path: "data/cache/github_cache.db"
-  default_expire: 3600
+  default_expire: 3600        # Cache expiration time in seconds (1 hour)
 
 rate_limit:
-  request_delay: 1.0
+  request_delay: 1.0          # Delay between API requests (seconds)
 
 output:
-  output_dir: "data/output"
+  output_dir: "data/output"   # Directory where CSV datasets are saved
 ```
 
-**Priority**: Configuration file > Environment variable > Default value
+**Priority**: CLI parameter `--token` (highest) > Configuration file `config.yml` > Environment variable `GITHUB_TOKEN`
 
-### Method 2: Environment Variable
-
-Alternatively, you can set the GitHub API token via environment variable:
-```bash
-export GITHUB_TOKEN=your_token_here
-```
-
-**Note**: Configuration file settings take precedence over environment variables.
+**Note**: GitHub API token is required. Generate one at [GitHub Settings > Developer settings > Personal access tokens](https://github.com/settings/tokens).
 
 ## Usage
 
-Run the project using the defined entry point:
+### Basic Usage
+
+Run the tool to generate a dataset:
 ```bash
 # Using the entry point defined in pyproject.toml (recommended)
-uv run php-includes --token your_github_token --max-projects 1000
+uv run php-dynctrlflow --token your_github_token --max-projects 1000
 ```
 
-Or activate the virtual environment and run:
-```bash
-uv shell
-php-includes --token your_github_token --max-projects 1000
-```
+This will generate CSV dataset files in `data/output/` directory with timestamps:
+- `php_projects_YYYYMMDD_HHMMSS.csv`: Basic dataset with qualified projects
+- `php_projects_summary_YYYYMMDD_HHMMSS.csv`: Summary statistics
+- `php_projects_detailed_YYYYMMDD_HHMMSS.csv`: Detailed analysis results
 
 ### Advanced Usage
 
-Search with custom settings:
+Generate dataset with custom settings:
 ```bash
-uv run php-includes --token YOUR_TOKEN --max-projects 500 --verbose
+uv run php-dynctrlflow --token YOUR_TOKEN --max-projects 500 --verbose
 ```
 
-Include unqualified projects in output:
+Include unqualified projects in dataset:
 ```bash
-uv run php-includes --token YOUR_TOKEN --max-projects 2000 --include-unqualified
+uv run php-dynctrlflow --token YOUR_TOKEN --max-projects 2000 --include-unqualified
 ```
 
-## Project Limits and Filtering Strategy
+### Output Location
 
-### Why We Need Limits
+Generated datasets are saved in the `data/output/` directory (configured in `config.yml`). The CSV files contain all necessary information to download and analyze the identified PHP projects.
 
-GitHub hosts millions of repositories, making it impossible to analyze all projects. Our system implements smart filtering to focus on relevant PHP projects:
+## How It Works
 
-1. **Language Filtering**: Uses GitHub's `language:PHP` qualifier to only search PHP repositories
-2. **Project Limits**: Default limit of 1000 projects to manage API usage and processing time
-3. **Smart Queries**: Pre-defined queries target specific security patterns
+### Dataset Generation Workflow
 
-### Recommended Limits
+The tool follows a structured workflow to discover, analyze, and export qualified PHP projects as downloadable datasets:
 
-- **Small-scale testing**: 100-500 projects
-- **Production analysis**: 1000-2000 projects  
-- **Large-scale research**: 5000+ projects (with caution)
+1. **Top Stars Discovery**: Retrieves specified number of top stars PHP repositories from GitHub Repository Search API, sorted by star count in descending order
 
-### API Rate Limiting
+2. **Repository Selection**: Limits total repositories to maximum project count (default: 1000) for analysis efficiency
 
-GitHub API has rate limits:
-- **Authenticated requests**: 5000 requests/hour
-- **Search API**: 30 requests/minute
-- **Repository API**: 5000 requests/hour
+3. **SearchResult Creation**: Converts repository items to SearchResult objects, automatically fetching commit SHA for each repository's default branch
 
-Our system includes automatic rate limiting and caching to respect these limits.
+4. **File Content Retrieval**: Scans repository root directories to fetch PHP file contents for analysis (limited to configurable max files per project, default: 10)
 
-## GitHub API Reference
+5. **SuperGlobal Validation**: Validates whether projects truly contain SuperGlobal parameter usage ($_GET, $_POST, $_REQUEST, $_COOKIE, $_SESSION, $_SERVER, $_FILES, $_ENV) as a necessary condition. Projects without SuperGlobal usage are abandoned.
 
-The project uses the GitHub REST API v3 to search for PHP repositories, analyze code, and retrieve file contents.
+6. **Primary Function Analysis**: Detects usage of dynamic functions like `call_user_func`, `call_user_func_array`, `forward_static_call`, `forward_static_call_array`, and variable function calls (`$var()` and `$$var()`). Projects with these functions are marked as qualified.
 
-**Base URL**: `https://api.github.com`
+7. **Fallback Analysis**: When primary functions do not exist, uses Semgrep static analysis to detect dynamic include/require statements with non-string literal expressions (variables, string concatenation, function calls). Projects with dynamic includes are marked as qualified.
 
-### Authentication
+8. **Result Qualification**: Applies strict multi-layer filtering logic to determine if projects meet recording conditions
 
-All API requests use personal access tokens for authentication:
-- **Header**: `Authorization: token <GITHUB_TOKEN>`
+9. **Dataset Export**: Exports qualified project information to CSV format datasets with complete metadata (project name, owner, repo name, URL, commit hash, star count, detection type)
+
+### Filtering Logic
+
+The system applies strict multi-layer filtering:
+
+1. **SuperGlobal Requirement** (Necessary Condition): Projects must contain SuperGlobal parameter usage. If not, the project is abandoned.
+
+2. **Primary Function Detection** (Priority 1): If SuperGlobal is present, check for special dynamic function calls (`call_user_func`, `call_user_func_array`, `forward_static_call`, `forward_static_call_array`, variable function calls). If found, record the project.
+
+3. **Fallback Include Detection** (Priority 2): If dynamic functions are not found, check for dynamic `include`/`require` statements with non-string literal expressions (variables, string concatenation, function calls). If found, record the project.
+
+4. **Abandonment**: If neither primary functions nor dynamic includes are found, abandon the project.
+
+### Dataset Size Configuration
+
+Configure the number of projects to analyze and include in the generated dataset:
+
+- **Default**: 1000 projects
+- **Small-scale testing**: 100-500 projects (quick validation)
+- **Production analysis**: 1000-2000 projects (balanced quality and quantity)
+- **Large-scale research**: 5000+ projects (requires significant API usage and processing time)
+
+**Note**: The `max_projects` parameter determines how many repositories are analyzed. Only qualified projects (passing all filtering criteria) are included in the final CSV dataset output.
+
+## GitHub API Authentication
+
+The tool requires a GitHub personal access token to access the GitHub API.
+
+**Token Configuration**:
 - **CLI Parameter**: `--token <TOKEN>` (highest priority)
 - **Configuration File**: `config.yml` → `github.api_token` (fallback)
 
-### API Endpoints Used
-
-#### 1. Code Search API
-
-**Endpoint**: `GET /search/code`
-
-**Purpose**: Primary method to discover PHP repositories containing specific code patterns.
-
-**Query Format**:
-```
-{pattern} language:PHP
-```
-
-**Example**:
-```
-call_user_func language:PHP
-include $_GET language:PHP
-```
-
-**Key Features**:
-- Searches across all public repositories (global search)
-- Returns file paths and repository information
-- Results are deduplicated by repository name
-- **Rate Limit**: 30 requests/minute (authenticated)
-
-**Response Fields Used**:
-- `items[].repository.full_name`: Repository identifier
-- `items[].path`: File path containing the match
-- `items[].repository.html_url`: Repository URL
-
-#### 2. File Content API
-
-**Endpoint**: `GET /repos/{owner}/{repo}/contents/{path}`
-
-**Purpose**: Fetch complete PHP file contents for analysis.
-
-**Features**:
-- Returns base64-encoded file content (requires decoding)
-- **Rate Limit**: 5000 requests/hour (authenticated)
-- **Limit**: Maximum 10 files per repository
-
-#### 3. Repository Contents API
-
-**Endpoint**: `GET /repos/{owner}/{repo}/contents`
-
-**Purpose**: Fallback method to list repository files when Code Search API doesn't provide file paths.
-
-**Features**:
-- Lists root directory contents
-- Filtered to PHP files only
-- **Rate Limit**: 5000 requests/hour (authenticated)
-
-#### 4. Repository Info API
-
-**Endpoint**: `GET /repos/{owner}/{repo}`
-
-**Purpose**: Get repository metadata (stars, description, etc.).
-
-**Rate Limit**: 5000 requests/hour (authenticated)
-
-### API Request Flow
-
-1. **Code Search API**: Search for code patterns (`call_user_func language:PHP`)
-   - Returns: List of files containing the pattern from various repositories
-
-2. **Extract Repository Information**: 
-   - Extract unique repository identifiers from results
-   - Collect matched file paths for each repository
-   - Deduplicate repositories
-
-3. **File Content API**: 
-   - Fetch complete file contents for matched files
-   - Uses file paths directly from Code Search results
-
-4. **Analysis**: 
-   - Use Semgrep and regex to analyze file contents locally
-   - Detect security risk patterns
-
-### Rate Limiting & Caching
-
-**Rate Limits**:
-- Code Search API: 30 requests/minute
-- Repository APIs: 5000 requests/hour
-
-**Caching**:
-All API responses are cached using SQLite database:
-- Code Search: 1 hour cache
-- File Content: 30 minutes cache
-- Repository Info: 1 hour cache
-
-**Automatic Handling**:
-- Pre-request rate limit checks
-- Automatic wait if approaching limits
-- Exponential backoff for errors
-
-### Why Code Search API?
-
-The project uses **Code Search API** (not Repository Search API) because:
-- **Code content search**: Finds repositories containing specific code patterns
-- **Combined filtering**: `language:PHP` + code pattern in one query
-- **Efficiency**: Returns only relevant repositories, avoiding millions of irrelevant ones
-- **Repository Search API limitation**: Searches by metadata (name, description), not code content
-
-### Error Handling
-
-Common HTTP status codes:
-- `200`: Success
-- `401`: Unauthorized (invalid token)
-- `403`: Forbidden (rate limit exceeded)
-- `404`: Not Found (file/repository doesn't exist)
-- `422`: Unprocessable Entity (invalid query format)
-- `429`: Too Many Requests (rate limit exceeded)
-
-The system includes automatic error handling with retry logic.
-
-### API Usage
-
-**Estimated usage per 100 projects**:
-- Code Search: 4-8 requests
-- File Content: 100-1000 requests
-- Total: ~104-1018 requests (within 5000/hour limit)
-
-**Reference Links**:
-- [GitHub REST API Documentation](https://docs.github.com/en/rest)
-- [Code Search API](https://docs.github.com/en/rest/search/search#search-code)
-- [Rate Limiting](https://docs.github.com/en/rest/rate-limit)
+**Note**: Generate a GitHub personal access token at [GitHub Settings > Developer settings > Personal access tokens](https://github.com/settings/tokens).
 
 ## Project Structure
 
 ```
-PHPIncludes/
-├── phpincludes/            # Core source code package
-├── config.yml              # Configuration file (git-ignored)
+php-dynctrlflow/
+├── php_dynctrlflow/        # Core source code package (dataset generator)
+│   ├── cli.py              # CLI interface
+│   ├── project_searcher.py # Project discovery and filtering orchestration
+│   ├── php_analyzer.py     # PHP code analysis (SuperGlobal, dynamic functions)
+│   ├── semgrep_analyzer.py # Semgrep static analysis integration
+│   ├── github_client.py    # GitHub API client (Repository Search, Contents, File Content)
+│   ├── cache_manager.py    # SQLite cache management
+│   ├── rate_limit_handler.py # GitHub API rate limit handling
+│   ├── search_result.py    # Search result data model
+│   ├── csv_exporter.py     # CSV dataset export functionality
+│   ├── settings.py         # Configuration loader
+│   └── semgrep/
+│       └── rules.yml       # Semgrep rules for dynamic include detection (internal)
+├── config.yml              # User configuration file (git-ignored)
 ├── config.yml.example      # Configuration template
 ├── tests/                  # Test cases
-├── scripts/                # Script files
 ├── docs/                   # Documentation
+│   ├── idea.md             # Concept document
+│   ├── design.md           # Technical design specification
+│   └── todo.md             # Development task list
 ├── pyproject.toml          # Project configuration and dependencies
 ├── uv.lock                 # Locked dependency versions
 └── .venv/                  # Virtual environment (managed by uv)
 
 # Runtime-generated directories (not in version control)
-├── data/                   # Runtime data (cache, temp files, output)
+├── data/                   # Runtime data
+│   ├── cache/              # SQLite cache database (API responses)
+│   ├── temp/               # Temporary files
+│   └── output/             # Generated CSV datasets (downloadable datasets)
+│       ├── php_projects_YYYYMMDD_HHMMSS.csv
+│       ├── php_projects_summary_YYYYMMDD_HHMMSS.csv
+│       └── php_projects_detailed_YYYYMMDD_HHMMSS.csv
 ├── .mypy_cache/           # MyPy type checking cache
 ├── .ruff_cache/           # Ruff code checking cache
-└── .semgrep/              # Semgrep cache
+└── .semgrep/              # Semgrep analysis cache
 ```
+
+**Note**: The `data/output/` directory contains the generated CSV datasets. These CSV files are the downloadable datasets produced by this tool.
+
+## Dataset Output Format
+
+The generated CSV datasets contain the following fields for qualified projects:
+
+### Basic Dataset (`php_projects_YYYYMMDD_HHMMSS.csv`)
+
+Contains essential information needed to download and identify projects:
+
+- `project_name`: Full repository name (owner/repo format)
+- `owner`: Repository owner (used for Git clone: `git clone https://github.com/{owner}/{repo_name}.git`)
+- `repo_name`: Repository name (used for Git clone)
+- `url`: Repository GitHub URL (direct link to project)
+- `commit_hash`: Latest commit SHA for the default branch (used to checkout specific version: `git checkout {commit_hash}`)
+- `star_count`: Number of stars (project popularity indicator)
+- `detection_type`: Detection type (`primary_functions` or `fallback_includes`)
+
+### Additional Dataset Files
+
+- `php_projects_summary_YYYYMMDD_HHMMSS.csv`: Summary statistics and aggregated data
+- `php_projects_detailed_YYYYMMDD_HHMMSS.csv`: Detailed analysis results with full detection information
+
+**Note**: Only qualified projects (meeting all filtering criteria: SuperGlobal usage + primary functions OR fallback includes) are included in the basic CSV dataset. Unqualified projects are filtered out unless `--include-unqualified` flag is used.
 
 ## Development
 
@@ -311,13 +236,13 @@ uv run pytest
 
 Code formatting:
 ```bash
-uv run black phpincludes/ tests/
-uv run ruff check phpincludes/ tests/
+uv run black php_dynctrlflow/ tests/
+uv run ruff check php_dynctrlflow/ tests/
 ```
 
 Type checking:
 ```bash
-uv run mypy phpincludes/
+uv run mypy php_dynctrlflow/
 ```
 
 Install new dependencies:

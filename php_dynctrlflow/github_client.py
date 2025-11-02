@@ -50,7 +50,7 @@ class GitHubAPIClient:
             {
                 "Authorization": f"token {api_token}",
                 "Accept": "application/vnd.github.v3+json",
-                "User-Agent": "PHPIncludes/1.0.0",
+                "User-Agent": "Dataset-PHPDynCtrlflow/1.0.0",
             }
         )
 
@@ -517,7 +517,7 @@ class GitHubAPIClient:
 
         Args:
             url: API URL
-            params: 查询parameter
+            params: Query parameters
 
         Returns:
             HTTP response object

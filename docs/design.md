@@ -279,7 +279,7 @@
 - **Properties**: 
   - `CONFIG_FILE_PATH: Path` - 配置文件路径（`config.yml`）
   - `CONFIG_FILE_EXAMPLE_PATH: Path` - 配置模板文件路径（`config.yml.example`）
-  - `CONFIG_FILE_ENV: str` - 配置文件路径环境变量名（`PHPINCLUDES_CONFIG`）
+  - `CONFIG_FILE_ENV: str` - 配置文件路径环境变量名（`PHP_DYNCTRLFLOW_CONFIG`）
   - `PROJECT_NAME: str` - 项目名称
   - `PROJECT_VERSION: str` - 项目版本
   - `PROJECT_DESCRIPTION: str` - 项目描述
@@ -356,7 +356,7 @@
 
 ## Semgrep Rules Configuration
 
-Semgrep规则配置文件位于`phpincludes/semgrep/rules.yml`（内部实现细节），包含以下规则：
+Semgrep规则配置文件位于`php_dynctrlflow/semgrep/rules.yml`（内部实现细节），包含以下规则：
 
 ### Dynamic Include/Require Detection Rules
 
@@ -471,8 +471,8 @@ CSV文件仅包含下载和分析项目所需的基本信息：
 ## Target System File Structure
 
 ```
-PHPIncludes/
-├── phpincludes/
+php-dynctrlflow/
+├── php_dynctrlflow/
 │   ├── __init__.py
 │   ├── github_client.py          # GitHubAPIClient class
 │   ├── cache_manager.py          # CacheManager class
@@ -484,7 +484,7 @@ PHPIncludes/
 │   ├── csv_exporter.py           # CSVExporter class
 │   ├── settings.py               # Settings class (configuration loader)
 │   ├── cli.py                     # CLI interface (command-line argument parsing and main logic)
-│   ├── __main__.py               # Package entry point (allows python -m phpincludes)
+│   ├── __main__.py               # Package entry point (allows python -m php_dynctrlflow)
 │   ├── semgrep/                  # Semgrep rules module (internal implementation)
 │   │   ├── __init__.py
 │   │   └── rules.yml              # Semgrep rules configuration (internal)
@@ -509,8 +509,6 @@ PHPIncludes/
 │   ├── idea.md                   # Conceptual documentation
 │   ├── design.md                 # Technical design specification
 │   └── todo.md                   # Development task list
-├── scripts/
-│   └── setup.py                  # Project setup script
 ├── pyproject.toml                # Project configuration and dependencies
 ├── uv.lock                       # Locked dependency versions (managed by uv)
 ├── .gitignore                    # Git ignore rules
@@ -530,7 +528,7 @@ PHPIncludes/
 
 ### File Structure Description
 
-**Core Source Files (`phpincludes/`)**
+**Core Source Files (`php_dynctrlflow/`)**
 - `github_client.py`: GitHub API交互和认证，包含Repository Search API、Repository Contents API、File Content API、Repository Info API和Commit SHA获取
 - `cache_manager.py`: SQLite缓存管理功能，用于存储API响应
 - `rate_limit_handler.py`: API速率限制处理，自动等待和限制请求频率
@@ -545,7 +543,7 @@ PHPIncludes/
 - `config.yml.example`: 配置文件模板，包含所有默认配置值（实际配置文件`config.yml`被Git忽略）
 - `config.yml`: 用户配置文件（Git忽略）
 
-**Core Source Files (`phpincludes/`) - Configuration & Internal Modules**
+**Core Source Files (`php_dynctrlflow/`) - Configuration & Internal Modules**
 - `settings.py`: 配置加载和格式化处理类，从项目根目录的`config.yml`读取所有配置值
 - `semgrep/rules.yml`: Semgrep规则配置文件（内部实现细节，不暴露给用户）
 - `semgrep/__init__.py`: Semgrep模块初始化文件
@@ -559,14 +557,12 @@ PHPIncludes/
 - `temp/`: 临时文件存储
 - `output/`: CSV结果输出（运行时生成，Git忽略）
 
-**Scripts (`scripts/`)**
-- `setup.py`: 项目设置脚本
 
 **Project Root**
-- `pyproject.toml`: 项目配置和元数据，使用uv进行依赖管理，定义入口点 `php-includes = "phpincludes.cli:main"`
+- `pyproject.toml`: 项目配置和元数据，使用uv进行依赖管理，定义入口点 `php-dynctrlflow = "php_dynctrlflow.cli:main"`
 - `uv.lock`: 锁定的依赖版本（由uv管理）
 
-**Entry Point (`phpincludes/`)**
+**Entry Point (`php_dynctrlflow/`)**
 - `cli.py`: CLI 接口（命令行参数解析和主要逻辑）
-- `__main__.py`: 包入口点（允许 `python -m phpincludes` 运行，备选方式）
-- 通过 `uv run php-includes` 执行（推荐方式，使用 pyproject.toml 中定义的入口点 `phpincludes.cli:main`）
+- `__main__.py`: 包入口点（允许 `python -m php_dynctrlflow` 运行，备选方式）
+- 通过 `uv run php-dynctrlflow` 执行（推荐方式，使用 pyproject.toml 中定义的入口点 `php_dynctrlflow.cli:main`）

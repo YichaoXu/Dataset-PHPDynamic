@@ -1,9 +1,9 @@
 [project]
-name = "php-includes"
+name = "php-dynctrlflow"
 version = "1.0.0"
-description = "PHP Project Dataset Collection Tool - Collects PHP projects from GitHub that meet specific criteria"
+description = "PHP Project Dataset Generator - Generates downloadable datasets of PHP projects with dynamic control flow characteristics from GitHub"
 authors = [
-    {name = "PHPIncludes Team", email = "team@phpincludes.dev"}
+    {name = "Dataset-PHPDynCtrlflow Team", email = "team@php-dynctrlflow.dev"}
 ]
 readme = "README.md"
 license = "MIT"
@@ -42,13 +42,13 @@ redis = [
 ]
 
 [project.scripts]
-php-includes = "phpincludes.cli:main"
+php-dynctrlflow = "php_dynctrlflow.cli:main"
 
 [tool.uv]
 package = true
 
 [tool.setuptools]
-packages = ["phpincludes"]
+packages = ["php_dynctrlflow"]
 include-package-data = false
 
 [tool.black]
@@ -115,14 +115,14 @@ python_functions = ["test_*"]
 addopts = [
     "--strict-markers",
     "--strict-config",
-    "--cov=phpincludes",
+    "--cov=php_dynctrlflow",
     "--cov-report=term-missing",
     "--cov-report=html",
     "--cov-report=xml",
 ]
 
 [tool.coverage.run]
-source = ["phpincludes"]
+source = ["php_dynctrlflow"]
 omit = [
     "*/tests/*",
     "*/test_*",
