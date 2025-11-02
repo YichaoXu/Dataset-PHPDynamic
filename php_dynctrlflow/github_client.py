@@ -92,9 +92,9 @@ class GitHubAPIClient:
 
         # Try to get from cache
         cached_result = self.cache_manager.get(cache_key)
-        if cached_result:
+        if cached_result and isinstance(cached_result, list):
             print(f"  ✅ Cache hit: Found {len(cached_result)} cached results")
-            return cached_result
+            return list(cached_result)  # Type conversion for mypy
 
         print("  🔄 Cache miss: Making API request...")
 
@@ -118,9 +118,9 @@ class GitHubAPIClient:
             print(f"  📥 Response status: {response.status_code}")
 
             if response.status_code == 200:
-                data = response.json()
+                data: Dict[str, Any] = response.json()
                 total_count = data.get("total_count", 0)
-                results = data.get("items", [])
+                results: List[Dict[str, Any]] = data.get("items", [])
                 incomplete_results = data.get("incomplete_results", False)
 
                 print("  ✅ API Response successful:")
@@ -192,8 +192,8 @@ class GitHubAPIClient:
 
         # Try to get from cache
         cached_result = self.cache_manager.get(cache_key)
-        if cached_result:
-            return cached_result
+        if cached_result and isinstance(cached_result, list):
+            return list(cached_result)  # Type conversion for mypy
 
         try:
             # Wait for rate limit
@@ -211,7 +211,7 @@ class GitHubAPIClient:
                 # Cache results (1 hour)
                 self.cache_manager.set(cache_key, results, expire_after=3600)
 
-                return results
+                return list(results)  # Type conversion for mypy
             else:
                 raise GitHubAPIError(
                     f"GitHub API request failed: {response.status_code}",
@@ -255,8 +255,8 @@ class GitHubAPIClient:
 
         # Try to get from cache
         cached_result = self.cache_manager.get(cache_key)
-        if cached_result:
-            return cached_result
+        if cached_result and isinstance(cached_result, list):
+            return list(cached_result)  # Type conversion for mypy
 
         try:
             # Wait for rate limit
@@ -268,8 +268,8 @@ class GitHubAPIClient:
             self.rate_limit_handler.update_from_response(response)
 
             if response.status_code == 200:
-                data = response.json()
-                results = data.get("items", [])
+                data: Dict[str, Any] = response.json()
+                results: List[Dict[str, Any]] = data.get("items", [])
 
                 # Cache results (2 hours, repository info changes less)
                 self.cache_manager.set(cache_key, results, expire_after=7200)
@@ -307,9 +307,9 @@ class GitHubAPIClient:
 
         # Try to get from cache
         cached_result = self.cache_manager.get(cache_key)
-        if cached_result:
+        if cached_result and isinstance(cached_result, list):
             print(f"        ✅ Cache hit: Found {len(cached_result)} items")
-            return cached_result
+            return list(cached_result)  # Type conversion for mypy
 
         print("        🔄 Cache miss: Making API request...")
 
@@ -322,7 +322,7 @@ class GitHubAPIClient:
             print(f"        📥 Response status: {response.status_code}")
 
             if response.status_code == 200:
-                contents = response.json()
+                contents: List[Dict[str, Any]] = response.json()
                 print(f"        ✅ Success: Retrieved {len(contents)} items")
 
                 # Cache results (30 minutes)
@@ -366,11 +366,11 @@ class GitHubAPIClient:
 
         # Try to get from cache
         cached_result = self.cache_manager.get(cache_key)
-        if cached_result:
+        if cached_result and isinstance(cached_result, str):
             print(
                 f"            ✅ Cache hit: Found cached file ({len(cached_result)} chars)"
             )
-            return cached_result
+            return str(cached_result)  # Type conversion for mypy
 
         print("            🔄 Cache miss: Making API request...")
 
@@ -383,12 +383,12 @@ class GitHubAPIClient:
             print(f"            📥 Response status: {response.status_code}")
 
             if response.status_code == 200:
-                file_data = response.json()
+                file_data: Dict[str, Any] = response.json()
 
                 # GitHub API returns base64-encoded content
                 import base64
 
-                content = base64.b64decode(file_data["content"]).decode("utf-8")
+                content: str = base64.b64decode(file_data["content"]).decode("utf-8")
                 print(f"            ✅ Success: Retrieved file ({len(content)} chars)")
 
                 # Cache results (30 minutes)
@@ -431,8 +431,8 @@ class GitHubAPIClient:
 
         # Try to get from cache
         cached_result = self.cache_manager.get(cache_key)
-        if cached_result:
-            return cached_result
+        if cached_result and isinstance(cached_result, dict):
+            return dict(cached_result)  # Type conversion for mypy
 
         try:
             self.rate_limit_handler.wait_if_needed()
@@ -441,7 +441,7 @@ class GitHubAPIClient:
             self.rate_limit_handler.update_from_response(response)
 
             if response.status_code == 200:
-                repo_info = response.json()
+                repo_info: Dict[str, Any] = response.json()
 
                 # Cache results (1 hour)
                 self.cache_manager.set(cache_key, repo_info, expire_after=3600)
@@ -478,9 +478,10 @@ class GitHubAPIClient:
         cached_result = self.cache_manager.get(cache_key)
         if cached_result:
             if isinstance(cached_result, dict):
-                return cached_result.get("sha", branch)
+                sha = cached_result.get("sha", branch)
+                return str(sha) if sha else branch  # Type conversion for mypy
             elif isinstance(cached_result, str):
-                return cached_result
+                return str(cached_result)  # Type conversion for mypy
             return branch
 
         try:
@@ -490,9 +491,9 @@ class GitHubAPIClient:
             self.rate_limit_handler.update_from_response(response)
 
             if response.status_code == 200:
-                commit_data = response.json()
+                commit_data: Dict[str, Any] = response.json()
                 # API returns a single commit object containing sha field
-                commit_sha = commit_data.get("sha", branch)
+                commit_sha: str = commit_data.get("sha", branch) or branch
 
                 # Cache results (30 minutes)
                 self.cache_manager.set(cache_key, commit_data, expire_after=1800)

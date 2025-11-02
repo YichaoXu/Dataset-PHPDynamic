@@ -44,13 +44,12 @@ class PHPAnalyzer:
             r"forward_static_call_array\s*\(",
         ]
 
-    def analyze_file_content(self, file_path: str, content: str) -> Dict[str, Any]:
+    def analyze_file_content(self, content: str) -> Dict[str, Any]:
         """
-        Analyze PHP file content
+        Analyze PHP file content, detecting all target features
 
         Args:
-            file_path: File path
-            content: File content
+            content: PHP code content
 
         Returns:
             Analysis result dictionary
@@ -60,7 +59,6 @@ class PHPAnalyzer:
         """
         try:
             result = {
-                "file_path": file_path,
                 "has_superglobal": False,
                 "has_dynamic_functions": False,
                 "has_dynamic_includes": False,
@@ -70,9 +68,11 @@ class PHPAnalyzer:
                 "analysis_summary": {},
             }
 
-            # 1. Check SuperGlobal usage
-            superglobal_result = self.check_superglobal_requirement(content)
-            result["has_superglobal"] = superglobal_result["found"]
+            # 1. Check SuperGlobal usage (required condition)
+            has_superglobal = self.check_superglobal_requirement(content)
+            result["has_superglobal"] = has_superglobal
+            # Get usage details
+            superglobal_result = self._check_superglobal_usage(content)
             result["superglobal_usage"] = superglobal_result["usage"]
 
             # If SuperGlobal does not exist, return directly
@@ -92,7 +92,9 @@ class PHPAnalyzer:
             variable_function_result = self.check_variable_functions(content)
             if variable_function_result["found"]:
                 result["has_dynamic_functions"] = True
-                result["dynamic_function_usage"].extend(variable_function_result["usage"])
+                usage_list = variable_function_result.get("usage", [])
+                if isinstance(usage_list, list) and isinstance(result["dynamic_function_usage"], list):
+                    result["dynamic_function_usage"].extend(usage_list)
 
             # 3. If main functions do not exist, check fallback includes
             if not result["has_dynamic_functions"]:
@@ -106,19 +108,38 @@ class PHPAnalyzer:
             return result
 
         except Exception as e:
-            raise AnalysisError(
-                f"Failed to analyze file {file_path}: {e}", file_path=file_path
-            ) from e
+            raise AnalysisError(f"Failed to analyze content: {e}") from e
 
-    def check_superglobal_requirement(self, content: str) -> Dict[str, Any]:
+    def check_superglobal_requirement(self, content: str) -> bool:
         """
-        检查SuperGlobal使用要求
+        Check SuperGlobal usage requirement
 
         Args:
-            content: PHP代码content
+            content: PHP code content
 
         Returns:
-            检查result字典
+            Whether SuperGlobal usage is found
+
+        Raises:
+            AnalysisError: Analysis failed
+        """
+        try:
+            for pattern in self.superglobal_patterns:
+                if re.search(pattern, content, re.IGNORECASE):
+                    return True
+            return False
+        except Exception as e:
+            raise AnalysisError(f"Failed to check SuperGlobal requirement: {e}") from e
+
+    def _check_superglobal_usage(self, content: str) -> Dict[str, Any]:
+        """
+        Check SuperGlobal usage and return detailed results
+
+        Args:
+            content: PHP code content
+
+        Returns:
+            Usage check result dictionary
         """
         usage = []
         found_patterns = set()
@@ -189,27 +210,24 @@ class PHPAnalyzer:
         Returns:
             Check result dictionary
         """
-        temp_file_path = None
         try:
             # Use Semgrep to detect variable function calls
-            # Create temporary file for Semgrep analysis
-            temp_file_path = self._create_temp_file(content)
-            semgrep_results = self.semgrep_analyzer.run_semgrep(temp_file_path)
+            semgrep_results = self.semgrep_analyzer.detect_variable_functions(content)
 
             usage = []
-            for result in semgrep_results:
-                # Only extract variable function call detection results (rule_id: variable-function-call)
-                if result.get("rule_id") == "variable-function-call":
+            # semgrep_results is Dict[str, List[Dict[str, Any]]] grouped by rule_id
+            for rule_id, results_list in semgrep_results.items():
+                for result in results_list:
                     usage.append(
                         {
-                            "rule_id": result["rule_id"],
+                            "rule_id": result.get("rule_id", rule_id),
                             "pattern": "variable-function-call",
-                            "line_number": result["line_number"],
-                            "message": result["message"],
-                            "severity": result["severity"],
+                            "line_number": result.get("line_number", 0),
+                            "message": result.get("message", ""),
+                            "severity": result.get("severity", ""),
                             "code_snippet": result.get("code_snippet", ""),
                             "context": self._get_context_by_line(
-                                content, result["line_number"]
+                                content, result.get("line_number", 0)
                             ),
                         }
                     )
@@ -217,20 +235,11 @@ class PHPAnalyzer:
             return {
                 "found": len(usage) > 0,
                 "usage": usage,
-                "semgrep_results": [
-                    r
-                    for r in semgrep_results
-                    if r.get("rule_id") == "variable-function-call"
-                ],
             }
 
         except Exception:
             # If Semgrep failed, use regex fallback
             return self._fallback_variable_function_detection(content)
-        finally:
-            # Clean up temporary file
-            if temp_file_path:
-                Path(temp_file_path).unlink(missing_ok=True)
 
     def _fallback_variable_function_detection(self, content: str) -> Dict[str, Any]:
         """
@@ -301,19 +310,21 @@ class PHPAnalyzer:
             semgrep_results = self.semgrep_analyzer.detect_dynamic_includes(content)
 
             usage = []
-            for result in semgrep_results:
-                usage.append(
-                    {
-                        "rule_id": result["rule_id"],
-                        "line_number": result["line_number"],
-                        "message": result["message"],
-                        "severity": result["severity"],
-                        "code_snippet": result["code_snippet"],
-                        "context": self._get_context_by_line(
-                            content, result["line_number"]
-                        ),
-                    }
-                )
+            # semgrep_results is Dict[str, List[Dict[str, Any]]] grouped by rule_id
+            for rule_id, results_list in semgrep_results.items():
+                for result in results_list:
+                    usage.append(
+                        {
+                            "rule_id": result.get("rule_id", rule_id),
+                            "line_number": result.get("line_number", 0),
+                            "message": result.get("message", ""),
+                            "severity": result.get("severity", ""),
+                            "code_snippet": result.get("code_snippet", ""),
+                            "context": self._get_context_by_line(
+                                content, result.get("line_number", 0)
+                            ),
+                        }
+                    )
 
             return {
                 "found": len(usage) > 0,
@@ -464,7 +475,9 @@ class PHPAnalyzer:
 
         for file_path, content in file_contents.items():
             try:
-                results[file_path] = self.analyze_file_content(file_path, content)
+                result = self.analyze_file_content(content)
+                result["file_path"] = file_path
+                results[file_path] = result
             except AnalysisError as e:
                 results[file_path] = {
                     "file_path": file_path,

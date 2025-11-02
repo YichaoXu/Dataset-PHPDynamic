@@ -155,10 +155,10 @@ def get_github_token(args: argparse.Namespace) -> str:
         ValueError: Token not found
     """
     if args.token:
-        return args.token
+        return str(args.token)  # Type conversion for mypy
 
     try:
-        return Settings.get_github_token()
+        return str(Settings.get_github_token())  # Type conversion for mypy
     except ValueError as e:
         raise ValueError(
             f"{e}\n"

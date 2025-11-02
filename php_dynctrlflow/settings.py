@@ -15,7 +15,7 @@ from typing import Any, Dict, List, Optional
 try:
     import yaml
 except ImportError:
-    yaml = None  # type: ignore
+    yaml = None  # type: ignore[assignment, unused-ignore]
 
 
 class Settings:
@@ -115,7 +115,7 @@ class Settings:
         """
         config = cls._load_config_file()
         keys = path.split(".")
-        value = config
+        value: Any = config
         for key in keys:
             if isinstance(value, dict):
                 value = value.get(key)
@@ -284,6 +284,20 @@ class Settings:
         return int(cls._get_config_value("search.max_files_per_project"))
 
     @classmethod
+    def get_batch_size(cls) -> int:
+        """
+        Get batch size for streaming batch processing
+
+        Returns:
+            Batch size (default: 100)
+        """
+        try:
+            return int(cls._get_config_value("search.batch_size"))
+        except (KeyError, ValueError):
+            # Default batch size if not configured
+            return 100
+
+    @classmethod
     def get_request_delay(cls) -> float:
         """
         Get request delay between API calls
@@ -361,14 +375,14 @@ class Settings:
         return str(cls._get_config_value("logging.log_format"))
 
     @classmethod
-    def validate_config(cls) -> Dict[str, bool]:
+    def validate_config(cls) -> Dict[str, Any]:
         """
         Validate configuration
 
         Returns:
-            Configuration validation results
+            Configuration validation results (dict with bool values and optional error messages)
         """
-        results = {}
+        results: Dict[str, Any] = {}
 
         # Check if config file exists
         try:

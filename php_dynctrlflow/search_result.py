@@ -54,7 +54,7 @@ class SearchResult:
         """Get SuperGlobal usage (deduplicated SuperGlobal types)"""
         usage = self.analysis_result.get("superglobal_usage", [])
         # Extract actual SuperGlobal variable names (from pattern or match)
-        superglobals = set()
+        superglobals: set[str] = set()
         for item in usage:
             match = item.get("match", "")
             pattern = item.get("pattern", "")

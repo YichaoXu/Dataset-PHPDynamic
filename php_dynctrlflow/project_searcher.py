@@ -6,7 +6,7 @@ coordinating all components to complete the full workflow.
 """
 
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
 from .cache_manager import CacheManager
@@ -55,7 +55,7 @@ class ProjectSearcher:
         )
 
         # Search statistics
-        self.search_stats = {
+        self.search_stats: Dict[str, Any] = {
             "total_searched": 0,
             "qualified_projects": 0,
             "rejected_projects": 0,
@@ -66,24 +66,37 @@ class ProjectSearcher:
 
     def search_projects(
         self,
-        max_projects: int = None,
+        max_projects: Optional[int] = None,
         export_csv: bool = True,
         include_unqualified: bool = False,
+        batch_size: Optional[int] = None,
     ) -> List[SearchResult]:
         """
-        Search and filter PHP projects
+        Search and filter PHP projects using streaming batch processing
+
+        Uses streaming batch processing to avoid keeping all projects in memory.
+        Processes repositories in batches, analyzes each batch, and releases memory
+        after processing each batch.
 
         Workflow:
         1. Use Repository Search API to get specified number of top stars PHP projects
-        2. Analyze these projects and detect security risk patterns
+        2. Split projects into batches (default: from config, typically 100 per batch)
+        3. For each batch:
+           a. Create SearchResult objects
+           b. Fetch file contents
+           c. Analyze and filter
+           d. Release file content memory
+           e. Accumulate qualified results
+        4. Export CSV and return qualified results
 
         Args:
             max_projects: Maximum number of projects to search and analyze (default from config)
             export_csv: Whether to export CSV file
             include_unqualified: Whether to include unqualified projects
+            batch_size: Number of repositories to process per batch (default from config)
 
         Returns:
-            Search result list
+            List of qualified search results
 
         Raises:
             GitHubAPIError: GitHub API request failed
@@ -93,68 +106,75 @@ class ProjectSearcher:
 
         self.search_stats["start_time"] = datetime.now()
 
-        # Get default value from config
+        # Get default values from config
         if max_projects is None:
             max_projects = Settings.get_max_projects()
+        if batch_size is None:
+            batch_size = Settings.get_batch_size()
 
         try:
             # 1. Use Repository Search API to get top stars PHP projects
             print(f"\n{'='*60}")
-            print("🚀 Starting PHP Project Search...")
+            print("🚀 Starting PHP Project Search (Streaming Batch Processing)...")
             print(f"{'='*60}")
             print(f"📊 Configuration:")
             print(f"   Max projects: {max_projects} top stars PHP projects")
+            print(f"   Batch size: {batch_size} repositories per batch")
             print(f"{'='*60}")
 
             print(f"\n🔍 Searching top {max_projects} stars PHP repositories...")
             repository_results = self._search_top_stars_php_projects(max_projects)
             print(f"✅ Found {len(repository_results)} PHP repositories")
 
-            # 2. Convert to SearchResult objects
-            print("\n🔄 Converting to SearchResult objects...")
-            all_results: List[SearchResult] = []
-            for i, repo_item in enumerate(repository_results, 1):
-                try:
-                    result = SearchResult.from_repository_item(
-                        repo_item, github_client=self.github_client
-                    )
-                    all_results.append(result)
-                    print(f"   [{i}/{len(repository_results)}] {result.project_name}")
-                except Exception as e:
-                    print(f"   ⚠️  Failed to convert repository {i}: {e}")
-                    continue
+            # Limit to max_projects
+            if len(repository_results) > max_projects:
+                repository_results = repository_results[:max_projects]
 
+            # 2. Process in batches
             print(f"\n{'='*60}")
-            print("📊 Search Summary:")
-            print(f"   Total repositories found: {len(all_results)}")
+            print(f"📊 Starting Batch Processing: {len(repository_results)} repositories in batches of {batch_size}")
             print(f"{'='*60}")
 
-            # 3. Limit to max_projects
-            unique_results = all_results
-            if len(unique_results) > max_projects:
-                print(
-                    f"\n⚠️  Limiting results to max_projects={max_projects} (had {len(unique_results)} repositories)"
-                )
-                unique_results = unique_results[:max_projects]
-                print(f"   Limited to: {len(unique_results)} repositories")
+            # Calculate total batches
+            total_batches = (len(repository_results) + batch_size - 1) // batch_size
+            print(f"   Total batches: {total_batches}")
 
-            # 4. Apply filtering logic
-            print(f"\n{'='*60}")
-            print(f"📊 Starting Analysis: {len(unique_results)} projects...")
-            print(f"{'='*60}")
-            filtered_results = self.apply_filtering_logic(unique_results)
+            # Accumulate qualified results
+            all_qualified_results: List[SearchResult] = []
 
-            # 5. Update statistics
-            self._update_search_stats(filtered_results)
+            # Process each batch
+            for batch_num in range(1, total_batches + 1):
+                start_idx = (batch_num - 1) * batch_size
+                end_idx = min(start_idx + batch_size, len(repository_results))
+                batch_repos = repository_results[start_idx:end_idx]
 
-            # 6. Export CSV (if needed)
+                print(f"\n{'='*60}")
+                print(f"📦 Processing Batch {batch_num}/{total_batches}")
+                print(f"   Repositories: {start_idx + 1}-{end_idx} of {len(repository_results)}")
+                print(f"{'='*60}")
+
+                # Process this batch
+                batch_results = self._process_batch(batch_repos, batch_num, total_batches)
+
+                # Accumulate qualified results
+                all_qualified_results.extend(batch_results)
+
+                # Print batch summary
+                print(f"\n✅ Batch {batch_num}/{total_batches} completed:")
+                print(f"   Qualified projects in this batch: {len(batch_results)}")
+                print(f"   Total qualified so far: {len(all_qualified_results)}")
+
+            # 3. Update statistics
+            self._update_search_stats(all_qualified_results)
+
+            # 4. Export CSV (if needed)
             if export_csv:
-                self._export_results(filtered_results, include_unqualified)
+                self._export_results(all_qualified_results, include_unqualified)
 
             self.search_stats["end_time"] = datetime.now()
             self._print_search_summary()
 
-            return filtered_results
+            return all_qualified_results
 
         except Exception as e:
             self.search_stats["end_time"] = datetime.now()
@@ -229,15 +249,74 @@ class ProjectSearcher:
             print(f"     {traceback.format_exc()}")
             raise GitHubAPIError(f"GitHub search failed: {e}") from e
 
-    def apply_filtering_logic(self, results: List[SearchResult]) -> List[SearchResult]:
+    def _process_batch(
+        self,
+        repository_items: List[Dict[str, Any]],
+        batch_num: int,
+        total_batches: int,
+    ) -> List[SearchResult]:
         """
-        Apply strict filtering logic
+        Process a single batch of repository items
+
+        For each repository in the batch:
+        1. Create SearchResult object
+        2. Get file contents
+        3. Analyze files
+        4. Apply filtering logic
+        5. Release file content memory
 
         Args:
-            results: Original search result list
+            repository_items: List of repository metadata items
+            batch_num: Current batch number
+            total_batches: Total number of batches
 
         Returns:
-            Filtered result list
+            List of qualified SearchResult objects from this batch
+
+        Raises:
+            GitHubAPIError: GitHub API request failed
+            AnalysisError: Project analysis failed
+        """
+        print(f"\n🔄 Processing batch {batch_num}/{total_batches}: {len(repository_items)} repositories")
+
+        # 1. Create SearchResult objects
+        batch_results: List[SearchResult] = []
+        for i, repo_item in enumerate(repository_items, 1):
+            try:
+                result = SearchResult.from_repository_item(
+                    repo_item, github_client=self.github_client
+                )
+                batch_results.append(result)
+                print(f"   [{i}/{len(repository_items)}] {result.project_name}")
+            except Exception as e:
+                print(f"   ⚠️  Failed to convert repository {i}: {e}")
+                continue
+
+        # 2. Apply filtering logic (this handles file content fetching, analysis, and filtering)
+        qualified_results = self.apply_filtering_logic(batch_results)
+
+        # 3. File content memory is automatically released after apply_filtering_logic
+        #   because file_contents dict goes out of scope after each project analysis
+
+        return qualified_results
+
+    def apply_filtering_logic(self, results: List[SearchResult]) -> List[SearchResult]:
+        """
+        Apply strict filtering logic to a batch of results
+
+        Designed to process a single batch of results. After analysis completes,
+        file contents are released from memory automatically.
+
+        Filtering logic:
+        1. SuperGlobal detection (required condition)
+        2. Primary function detection (priority 1)
+        3. Fallback include detection (priority 2)
+
+        Args:
+            results: Batch of search results to filter (typically from a single batch)
+
+        Returns:
+            List of qualified search results from this batch
 
         Raises:
             AnalysisError: Project analysis failed
@@ -330,7 +409,8 @@ class ProjectSearcher:
                 print("   📋 Error details:")
                 print(f"      {traceback.format_exc()}")
                 result.add_metadata("analysis_error", str(e))
-                self.search_stats["error_projects"] += 1
+                error_count = self.search_stats.get("error_projects", 0)
+                self.search_stats["error_projects"] = error_count + 1
 
         print(f"\n{'='*60}")
         print("📊 Filtering Summary:")
@@ -428,7 +508,7 @@ class ProjectSearcher:
         Returns:
             Combined analysis result
         """
-        combined = {
+        combined: Dict[str, Any] = {
             "has_superglobal": False,
             "has_dynamic_functions": False,
             "has_dynamic_includes": False,
@@ -441,13 +521,17 @@ class ProjectSearcher:
 
         for _file_path, result in analysis_results.items():
             # Merge usage information
-            combined["superglobal_usage"].extend(result.get("superglobal_usage", []))
-            combined["dynamic_function_usage"].extend(
-                result.get("dynamic_function_usage", [])
-            )
-            combined["dynamic_include_usage"].extend(
-                result.get("dynamic_include_usage", [])
-            )
+            superglobal_usage = result.get("superglobal_usage", [])
+            if isinstance(superglobal_usage, list) and isinstance(combined["superglobal_usage"], list):
+                combined["superglobal_usage"].extend(superglobal_usage)
+            
+            dynamic_function_usage = result.get("dynamic_function_usage", [])
+            if isinstance(dynamic_function_usage, list) and isinstance(combined["dynamic_function_usage"], list):
+                combined["dynamic_function_usage"].extend(dynamic_function_usage)
+            
+            dynamic_include_usage = result.get("dynamic_include_usage", [])
+            if isinstance(dynamic_include_usage, list) and isinstance(combined["dynamic_include_usage"], list):
+                combined["dynamic_include_usage"].extend(dynamic_include_usage)
 
             # Merge flags
             combined["has_superglobal"] = combined["has_superglobal"] or result.get(
@@ -548,14 +632,11 @@ class ProjectSearcher:
         Args:
             results: Search result list
         """
-        self.search_stats["total_searched"] = len(results)
-        self.search_stats["qualified_projects"] = sum(
-            1 for r in results if r.is_qualified
-        )
-        self.search_stats["rejected_projects"] = (
-            self.search_stats["total_searched"]
-            - self.search_stats["qualified_projects"]
-        )
+        total_searched = len(results)
+        qualified_projects = sum(1 for r in results if r.is_qualified)
+        self.search_stats["total_searched"] = total_searched
+        self.search_stats["qualified_projects"] = qualified_projects
+        self.search_stats["rejected_projects"] = total_searched - qualified_projects
 
     def _export_results(
         self, results: List[SearchResult], include_unqualified: bool
@@ -588,11 +669,11 @@ class ProjectSearcher:
     def _print_search_summary(self) -> None:
         """Print search summary"""
         stats = self.search_stats
-        duration = (
-            stats["end_time"] - stats["start_time"]
-            if stats["start_time"] and stats["end_time"]
-            else None
-        )
+        start_time = stats.get("start_time")
+        end_time = stats.get("end_time")
+        duration: Optional[timedelta] = None
+        if start_time and end_time and isinstance(start_time, datetime) and isinstance(end_time, datetime):
+            duration = end_time - start_time
 
         print("\n" + "=" * 50)
         print("\n🔍 Search Summary")

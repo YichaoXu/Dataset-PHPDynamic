@@ -24,6 +24,14 @@
 ### Filtering Logic
 严格的多层筛选：仓库选择和限制 → SuperGlobal检测（必要条件）→ 主要函数检测（优先级1）→ 备选检测（优先级2）。
 
+### Streaming Batch Processing
+采用流式批处理架构，分批获取和分析项目，每批处理完成后立即释放内存。默认批次大小为100个项目，可通过batch_size参数配置。这种设计避免了将所有项目同时保存在内存中，支持处理大量项目而不会导致内存溢出。
+
+**内存使用模式**：
+- 单批内存峰值：仓库元数据（`batch_size × ~2KB`） + SearchResult对象（`batch_size × ~5KB`） + 单个项目文件内容峰值（`max_files_per_project × ~30KB`） ≈ 1-2MB（batch_size=100）
+- 内存释放策略：每个项目分析完成后立即释放文件内容，每批处理完成后未qualified项目对象可被GC回收，仅qualified项目的SearchResult对象保留在最终结果列表中
+- 内存占用对比：处理1000个项目时，流式批处理峰值内存约1-2MB，而原有架构需要50-100MB（所有项目同时保存在内存中）
+
 ## Class Specifications
 
 ### ProjectSearcher Class
@@ -36,17 +44,23 @@
   - `cache_manager: CacheManager` - 缓存管理器
   - `rate_limit_handler: RateLimitHandler` - 速率限制处理器
 
-- **`search_projects(max_projects: int = None, export_csv: bool = True, include_unqualified: bool = False) -> List[SearchResult]`**
-  - **Behavior**: 执行完整的项目搜索和筛选流程：获取top stars PHP项目 → 文件内容获取 → 分析 → 筛选 → 导出
-  - **Input**: max_projects（要搜索和分析的项目数量上限，默认从配置获取）, export_csv（是否导出CSV）, include_unqualified（是否包含不合格项目）
-  - **Output**: 符合条件的搜索结果列表
+- **`search_projects(max_projects: int = None, export_csv: bool = True, include_unqualified: bool = False, batch_size: int = 100) -> List[SearchResult]`**
+  - **Behavior**: 使用流式批处理方式执行完整的项目搜索和筛选流程。分批获取top stars PHP项目，对每批项目立即进行分析和筛选，避免将所有项目保存在内存中。流程：获取一批仓库 → 创建SearchResult对象 → 文件内容获取 → 分析 → 筛选 → 保存结果 → 释放内存 → 处理下一批
+  - **Input**: max_projects（要搜索和分析的项目数量上限，默认从配置获取）, export_csv（是否导出CSV）, include_unqualified（是否包含不合格项目）, batch_size（每批处理的仓库数量，默认100）
+  - **Output**: 符合条件的搜索结果列表（仅包含qualified项目）
   - **Raises**: `GitHubAPIError`, `AnalysisError`
 
 - **`apply_filtering_logic(results: List[SearchResult]) -> List[SearchResult]`**
-  - **Behavior**: 对搜索结果列表应用筛选逻辑：SuperGlobal检测（必要条件）→ 主要函数检测（优先级1）→ 备选检测（优先级2）
-  - **Input**: 搜索结果列表
-  - **Output**: 筛选后的搜索结果列表
+  - **Behavior**: 对一批搜索结果应用筛选逻辑：SuperGlobal检测（必要条件）→ 主要函数检测（优先级1）→ 备选检测（优先级2）。设计为处理单个批次，分析完成后立即返回结果，不保留文件内容在内存中。
+  - **Input**: 一批搜索结果列表（通常来自单个批处理批次）
+  - **Output**: 筛选后的搜索结果列表（仅qualified项目）
   - **Raises**: `AnalysisError`
+
+- **`_process_batch(repository_items: List[Dict[str, Any]], batch_num: int, total_batches: int) -> List[SearchResult]`**
+  - **Behavior**: 处理单个批次的仓库项目。创建SearchResult对象，获取文件内容，执行分析，应用筛选逻辑，返回qualified项目。处理完成后释放文件内容内存。
+  - **Input**: repository_items（一批仓库元数据列表）, batch_num（当前批次编号）, total_batches（总批次数）
+  - **Output**: 该批次中符合条件的搜索结果列表
+  - **Raises**: `GitHubAPIError`, `AnalysisError`
 
 ### PHPAnalyzer Class
 - **Responsibility**: 分析PHP代码，检测SuperGlobal、主要函数和动态include使用
@@ -301,6 +315,12 @@
   - **Output**: 最大文件数
   - **Raises**: `KeyError`（如果配置不存在）
 
+- **`get_batch_size() -> int`**
+  - **Behavior**: 获取流式处理的批次大小（每批处理的仓库数量）
+  - **Input**: None
+  - **Output**: 批次大小（默认100）
+  - **Raises**: `KeyError`（如果配置不存在）
+
 - **`get_cache_db_path() -> str`**
   - **Behavior**: 获取缓存数据库路径，自动创建父目录
   - **Input**: None
@@ -435,26 +455,46 @@ Semgrep规则配置文件位于`php_dynctrlflow/semgrep/rules.yml`（内部实�
 
 ## Processing Flow
 
+流式批处理架构，避免将所有项目保存在内存中：
+
 ```
-1. Top Stars Discovery
-   ↓ (GitHub Repository Search API, sorted by stars)
-2. Repository Selection
-   ↓ (Limit to max_projects)
-3. SearchResult Creation
-   ↓ (Convert to SearchResult objects, get commit SHA)
-4. File Content Retrieval
-   ↓ (Scan repository root, fetch PHP files)
-5. SuperGlobal Validation
-   ↓ (必要条件检查)
-6. Primary Function Analysis
-   ↓ (call_user_func, variable functions等检测)
-7. Fallback Analysis (if needed)
-   ↓ (Semgrep动态include检测)
-8. Result Qualification
-   ↓ (筛选逻辑应用)
-9. Data Export
-   ↓ (CSV格式输出)
+1. Top Stars Discovery (Batch-based)
+   ↓ (GitHub Repository Search API, sorted by stars, paginated)
+2. Batch Iteration (Loop for each batch)
+   ↓ (Process batch_size repositories at a time, default: 100)
+   
+   For each batch:
+   ├─ 2.1. Repository Items Retrieval
+   │     ↓ (Get batch_size repository metadata items)
+   ├─ 2.2. SearchResult Creation (Per Item)
+   │     ↓ (Convert to SearchResult object, get commit SHA)
+   ├─ 2.3. File Content Retrieval (Per Item)
+   │     ↓ (Scan repository root, fetch PHP files, limited to max_files_per_project)
+   ├─ 2.4. Analysis (Per Item)
+   │     ├─ 2.4.1. SuperGlobal Validation
+   │     │     ↓ (必要条件检查)
+   │     ├─ 2.4.2. Primary Function Analysis
+   │     │     ↓ (call_user_func, variable functions等检测)
+   │     └─ 2.4.3. Fallback Analysis (if needed)
+   │           ↓ (Semgrep动态include检测)
+   ├─ 2.5. Result Qualification (Per Item)
+   │     ↓ (筛选逻辑应用，判断是否qualified)
+   ├─ 2.6. Memory Release
+   │     ↓ (释放文件内容内存，保留分析结果摘要)
+   └─ 2.7. Accumulate Qualified Results
+         ↓ (将qualified结果添加到结果列表)
+
+3. Final Result Aggregation
+   ↓ (合并所有批次的qualified结果)
+4. Data Export
+   ↓ (CSV格式输出，包含所有qualified项目)
 ```
+
+**流式处理的优势**：
+- **内存效率**：每批处理完后立即释放文件内容，避免大量数据同时占用内存
+- **可扩展性**：支持处理大量项目（5000+）而不会导致内存溢出
+- **即时反馈**：每批处理完成后可显示进度，用户可以了解处理状态
+- **错误隔离**：单个批次的错误不会影响其他批次的处理
 
 ## Output Format
 

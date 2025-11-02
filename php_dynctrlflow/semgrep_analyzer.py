@@ -28,15 +28,15 @@ class SemgrepAnalyzer:
         if not self.rules_file.exists():
             raise SemgrepError(f"Semgrep rules file not found: {rules_file}")
 
-    def detect_dynamic_includes(self, php_content: str) -> List[Dict[str, Any]]:
+    def detect_dynamic_includes(self, content: str) -> Dict[str, List[Dict[str, Any]]]:
         """
         Detect dynamic include/require statements in PHP code
 
         Args:
-            php_content: PHP code content
+            content: PHP code content
 
         Returns:
-            List of detection results, each containing file path, line number, rule ID, etc.
+            Detection results grouped by rule ID
 
         Raises:
             SemgrepError: Semgrep analysis failed
@@ -45,23 +45,75 @@ class SemgrepAnalyzer:
         with tempfile.NamedTemporaryFile(
             mode="w", suffix=".php", delete=False
         ) as temp_file:
-            temp_file.write(php_content)
+            temp_file.write(content)
             temp_file_path = temp_file.name
 
         try:
             # Run Semgrep analysis
-            results = self.run_semgrep(temp_file_path)
-            return results
+            results = self.run_semgrep(temp_file_path, str(self.rules_file))
+            
+            # Group results by rule_id
+            grouped_results: Dict[str, List[Dict[str, Any]]] = {}
+            for result in results:
+                rule_id = result.get("rule_id", "unknown")
+                if rule_id not in grouped_results:
+                    grouped_results[rule_id] = []
+                grouped_results[rule_id].append(result)
+            
+            return grouped_results
         finally:
             # Clean up temporary file
             Path(temp_file_path).unlink(missing_ok=True)
 
-    def run_semgrep(self, file_path: str) -> List[Dict[str, Any]]:
+    def detect_variable_functions(self, content: str) -> Dict[str, List[Dict[str, Any]]]:
         """
-        Run Semgrep analysis on specified file
+        Detect variable function calls ($var() and $$var())
+
+        Args:
+            content: PHP code content
+
+        Returns:
+            Variable function detection results grouped by rule ID
+
+        Raises:
+            SemgrepError: Semgrep analysis failed
+        """
+        # Create temporary file
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".php", delete=False
+        ) as temp_file:
+            temp_file.write(content)
+            temp_file_path = temp_file.name
+
+        try:
+            # Run Semgrep analysis
+            results = self.run_semgrep(temp_file_path, str(self.rules_file))
+            
+            # Filter for variable function call results only
+            variable_function_results = [
+                r for r in results if r.get("rule_id") == "variable-function-call"
+            ]
+            
+            # Group results by rule_id
+            grouped_results: Dict[str, List[Dict[str, Any]]] = {}
+            for result in variable_function_results:
+                rule_id = result.get("rule_id", "variable-function-call")
+                if rule_id not in grouped_results:
+                    grouped_results[rule_id] = []
+                grouped_results[rule_id].append(result)
+            
+            return grouped_results
+        finally:
+            # Clean up temporary file
+            Path(temp_file_path).unlink(missing_ok=True)
+
+    def run_semgrep(self, file_path: str, rules_path: str) -> List[Dict[str, Any]]:
+        """
+        Run Semgrep analysis on specified file using specified rules file
 
         Args:
             file_path: File path to analyze
+            rules_path: Semgrep rules file path
 
         Returns:
             List of Semgrep analysis results
@@ -74,7 +126,7 @@ class SemgrepAnalyzer:
             cmd = [
                 "semgrep",
                 "--config",
-                str(self.rules_file),
+                str(rules_path),
                 "--json",
                 "--no-git-ignore",
                 file_path,
@@ -166,8 +218,9 @@ class SemgrepAnalyzer:
                     mode="w", suffix=".php", delete=False
                 )
                 temp_file.write(content)
+                temp_file_path = str(temp_file.name)
                 temp_file.close()
-                temp_files.append(str(temp_file.name))
+                temp_files.append(temp_file_path)
 
             # Run Semgrep analysis on all files
             cmd = [
@@ -203,8 +256,8 @@ class SemgrepAnalyzer:
             raise SemgrepError(f"Semgrep execution timeout: {e}", command=" ".join(cmd))
         finally:
             # Clean up temporary file
-            for temp_file in temp_files:
-                Path(temp_file).unlink(missing_ok=True)
+            for temp_file_path in temp_files:
+                Path(temp_file_path).unlink(missing_ok=True)
 
     def get_rule_info(self) -> Dict[str, Any]:
         """
