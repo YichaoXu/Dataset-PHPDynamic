@@ -1,7 +1,8 @@
 """
-项目搜索器
+Project Searcher
 
-本模块实现了核心的项目搜索和筛选逻辑，协调所有组件完成完整的工作流程。
+This module implements core project search and filtering logic,
+coordinating all components to complete the full workflow.
 """
 
 import time
@@ -19,7 +20,7 @@ from .semgrep_analyzer import SemgrepAnalyzer
 
 
 class ProjectSearcher:
-    """项目搜索器，协调所有组件完成项目搜索和筛选"""
+    """Project searcher that coordinates all components to complete project search and filtering"""
 
     def __init__(
         self,
@@ -31,29 +32,29 @@ class ProjectSearcher:
         csv_exporter: Optional[CSVExporter] = None,
     ) -> None:
         """
-        初始化项目搜索器
+        Initialize project searcher
 
         Args:
-            github_token: GitHub API访问令牌
-            cache_manager: 缓存管理器
-            rate_limit_handler: 速率限制处理器
-            semgrep_analyzer: Semgrep分析器
-            php_analyzer: PHP分析器
-            csv_exporter: CSV导出器
+            github_token: GitHub API access token
+            cache_manager: Cache manager
+            rate_limit_handler: Rate limit handler
+            semgrep_analyzer: Semgrep analyzer
+            php_analyzer: PHP analyzer
+            csv_exporter: CSV exporter
         """
-        # 初始化组件
+        # Initialize components
         self.cache_manager = cache_manager or CacheManager()
         self.rate_limit_handler = rate_limit_handler or RateLimitHandler()
         self.semgrep_analyzer = semgrep_analyzer or SemgrepAnalyzer()
         self.php_analyzer = php_analyzer or PHPAnalyzer(self.semgrep_analyzer)
         self.csv_exporter = csv_exporter or CSVExporter()
 
-        # 初始化GitHub客户端
+        # Initialize GitHub client
         self.github_client = GitHubAPIClient(
             github_token, self.cache_manager, self.rate_limit_handler
         )
 
-        # 搜索统计
+        # Search statistics
         self.search_stats = {
             "total_searched": 0,
             "qualified_projects": 0,
@@ -65,85 +66,74 @@ class ProjectSearcher:
 
     def search_projects(
         self,
-        search_queries: List[str],
-        max_projects: int = 100,
+        max_projects: int = None,
         export_csv: bool = True,
         include_unqualified: bool = False,
     ) -> List[SearchResult]:
         """
-        搜索并筛选PHP项目
+        Search and filter PHP projects
+
+        Workflow:
+        1. Use Repository Search API to get specified number of top stars PHP projects
+        2. Analyze these projects and detect security risk patterns
 
         Args:
-            search_queries: 搜索查询列表
-            max_projects: 最大项目数量
-            export_csv: 是否导出CSV文件
-            include_unqualified: 是否包含不符合条件的项目
+            max_projects: Maximum number of projects to search and analyze (default from config)
+            export_csv: Whether to export CSV file
+            include_unqualified: Whether to include unqualified projects
 
         Returns:
-            搜索结果列表
+            Search result list
 
         Raises:
-            GitHubAPIError: GitHub API请求失败
-            AnalysisError: 项目分析失败
+            GitHubAPIError: GitHub API request failed
+            AnalysisError: Project analysis failed
         """
+        from .settings import Settings
+
         self.search_stats["start_time"] = datetime.now()
 
+        # Get default value from config
+        if max_projects is None:
+            max_projects = Settings.get_max_projects()
+
         try:
-            # 1. Optimize search strategy: group queries to reduce API calls
+            # 1. Use Repository Search API to get top stars PHP projects
             print(f"\n{'='*60}")
-            print(
-                f"🔍 Optimizing Search Strategy: Processing {len(search_queries)} queries..."
-            )
+            print("🚀 Starting PHP Project Search...")
             print(f"{'='*60}")
-            print("📝 Original Query List:")
-            for i, q in enumerate(search_queries, 1):
-                print(f"   {i}. {q}")
-
-            optimized_queries = self._create_optimized_queries(search_queries)
-
-            print(f"\n📦 Optimized Query List ({len(optimized_queries)} query groups):")
-            for i, q in enumerate(optimized_queries, 1):
-                print(f"   {i}. {q}")
-
-            # 2. Execute grouped searches
-            print(f"\n{'='*60}")
-            print("🚀 Starting GitHub API Search...")
+            print(f"📊 Configuration:")
+            print(f"   Max projects: {max_projects} top stars PHP projects")
             print(f"{'='*60}")
+
+            print(f"\n🔍 Searching top {max_projects} stars PHP repositories...")
+            repository_results = self._search_top_stars_php_projects(max_projects)
+            print(f"✅ Found {len(repository_results)} PHP repositories")
+
+            # 2. Convert to SearchResult objects
+            print("\n🔄 Converting to SearchResult objects...")
             all_results: List[SearchResult] = []
-            for i, query in enumerate(optimized_queries, 1):
-                print(f"\n🔍 Executing Search [{i}/{len(optimized_queries)}]:")
-                print(f"   Query: {query}")
+            for i, repo_item in enumerate(repository_results, 1):
                 try:
-                    search_results = self._search_github_projects_optimized(
-                        query, max_projects
+                    result = SearchResult.from_repository_item(
+                        repo_item, github_client=self.github_client
                     )
-                    print(
-                        f"   ✅ Search successful: Found {len(search_results)} results"
-                    )
-                    all_results.extend(search_results)
+                    all_results.append(result)
+                    print(f"   [{i}/{len(repository_results)}] {result.project_name}")
                 except Exception as e:
-                    print(f"   ❌ Search failed: {e}")
-                    print("   ⚠️  Continuing with next query...")
+                    print(f"   ⚠️  Failed to convert repository {i}: {e}")
                     continue
 
             print(f"\n{'='*60}")
             print("📊 Search Summary:")
-            print(f"   Total results: {len(all_results)}")
+            print(f"   Total repositories found: {len(all_results)}")
             print(f"{'='*60}")
 
-            # 3. Deduplicate results
-            print("\n🔄 Deduplicating results...")
-            before_dedup = len(all_results)
-            unique_results = self._deduplicate_results(all_results)
-            after_dedup = len(unique_results)
-            print(f"   Before deduplication: {before_dedup} results")
-            print(f"   After deduplication: {after_dedup} results")
-            print(f"   Duplicates removed: {before_dedup - after_dedup}")
-
-            # 3.5. Limit to max_projects
+            # 3. Limit to max_projects
+            unique_results = all_results
             if len(unique_results) > max_projects:
                 print(
-                    f"\n⚠️  Limiting results to max_projects={max_projects} (had {len(unique_results)} unique repositories)"
+                    f"\n⚠️  Limiting results to max_projects={max_projects} (had {len(unique_results)} repositories)"
                 )
                 unique_results = unique_results[:max_projects]
                 print(f"   Limited to: {len(unique_results)} repositories")
@@ -154,10 +144,10 @@ class ProjectSearcher:
             print(f"{'='*60}")
             filtered_results = self.apply_filtering_logic(unique_results)
 
-            # 5. 更新统计信息
+            # 5. Update statistics
             self._update_search_stats(filtered_results)
 
-            # 6. 导出CSV（如果需要）
+            # 6. Export CSV (if needed)
             if export_csv:
                 self._export_results(filtered_results, include_unqualified)
 
@@ -170,18 +160,87 @@ class ProjectSearcher:
             self.search_stats["end_time"] = datetime.now()
             raise GitHubAPIError(f"Project search failed: {e}") from e
 
-    def apply_filtering_logic(self, results: List[SearchResult]) -> List[SearchResult]:
+    def _search_top_stars_php_projects(
+        self, count: int
+    ) -> List[Dict[str, Any]]:
         """
-        应用严格的筛选逻辑
+        Search for top stars PHP projects
 
         Args:
-            results: 原始搜索结果列表
+            count: Number of projects to get
 
         Returns:
-            筛选后的结果列表
+            repositorySearch result list
 
         Raises:
-            AnalysisError: 项目分析失败
+            GitHubAPIError: GitHub API request failed
+        """
+        try:
+            # Use Repository Search API to search for PHP projects, sorted by stars
+            query = "language:PHP"
+            print(f"  📡 GitHub Repository Search API:")
+            print(f"     Query: {query}")
+            print(f"     Sort: stars (descending)")
+            print(f"     Count: {count}")
+
+            # Since GitHub API returns at most 100 results per page, need to paginate
+            all_repos: List[Dict[str, Any]] = []
+            per_page = min(count, 100)  # GitHub maximum limit is 100 per page
+
+            # Calculate required number of pages
+            pages_needed = (count + per_page - 1) // per_page
+
+            for page in range(1, pages_needed + 1):
+                if len(all_repos) >= count:
+                    break
+
+                remaining = count - len(all_repos)
+                current_per_page = min(remaining, per_page)
+
+                print(f"  📄 Fetching page {page}/{pages_needed} (requesting {current_per_page} items)...")
+
+                repos = self.github_client.search_repositories_optimized(
+                    query=query,
+                    per_page=current_per_page,
+                    page=page,
+                )
+                all_repos.extend(repos)
+
+                print(f"  ✅ Page {page}: Retrieved {len(repos)} repositories")
+                print(f"  📊 Total so far: {len(all_repos)}/{count}")
+
+                # If number of results returned is less than requested, no more results available
+                if len(repos) < current_per_page:
+                    print(f"  ⚠️  No more results available")
+                    break
+
+            # Limit to requested number
+            if len(all_repos) > count:
+                all_repos = all_repos[:count]
+
+            print(f"\n  ✅ Successfully retrieved {len(all_repos)} PHP repositories")
+            return all_repos
+
+        except Exception as e:
+            print(f"  ❌ GitHub search failed: {e}")
+            import traceback
+
+            print("  📋 Error details:")
+            print(f"     {traceback.format_exc()}")
+            raise GitHubAPIError(f"GitHub search failed: {e}") from e
+
+    def apply_filtering_logic(self, results: List[SearchResult]) -> List[SearchResult]:
+        """
+        Apply strict filtering logic
+
+        Args:
+            results: Original search result list
+
+        Returns:
+            Filtered result list
+
+        Raises:
+            AnalysisError: Project analysis failed
         """
         filtered_results: List[SearchResult] = []
         qualified_count = 0
@@ -283,267 +342,23 @@ class ProjectSearcher:
 
         return filtered_results
 
-    def _create_optimized_queries(self, search_queries: List[str]) -> List[str]:
-        """
-        创建优化的搜索查询列表
-        GitHub Code Search API对OR查询有格式要求，我们将相关查询分组
-
-        Args:
-            search_queries: 原始搜索查询列表
-
-        Returns:
-            优化后的搜索查询列表
-        """
-        # 清理查询，移除language:PHP限定符
-        cleaned_queries = []
-        for query in search_queries:
-            clean_query = (
-                query.replace(" language:PHP", "").replace(" language:php", "").strip()
-            )
-            # GitHub Code Search API对查询格式要求：
-            # - 简单字符串：直接使用
-            # - 包含特殊字符的：保持原样，API会自动处理
-            # 不需要手动添加引号，这可能导致422错误
-            cleaned_queries.append(clean_query)
-
-        # 分组：函数相关查询和include相关查询
-        function_queries = []
-        include_queries = []
-
-        for query in cleaned_queries:
-            # 判断查询类型
-            query_lower = query.lower()
-            if any(
-                func in query_lower
-                for func in ["call_user_func", "forward_static_call"]
-            ):
-                function_queries.append(query)
-            elif any(inc in query_lower for inc in ["include", "require"]):
-                include_queries.append(query)
-
-        # 构建优化后的查询列表
-        optimized_queries = []
-
-        # 函数查询：每组最多2个用OR连接（避免查询过长）
-        if function_queries:
-            for i in range(0, len(function_queries), 2):
-                group = function_queries[i : i + 2]
-                if len(group) == 1:
-                    optimized_queries.append(group[0])
-                else:
-                    # GitHub API要求OR查询格式：query1 OR query2
-                    optimized_queries.append(" OR ".join(group))
-
-        # Include查询：每组最多2个用OR连接（避免查询过长）
-        if include_queries:
-            for i in range(0, len(include_queries), 2):
-                group = include_queries[i : i + 2]
-                if len(group) == 1:
-                    optimized_queries.append(group[0])
-                else:
-                    optimized_queries.append(" OR ".join(group))
-
-        # 如果没有分组，使用原始清理后的查询
-        if not optimized_queries:
-            optimized_queries = cleaned_queries
-
-        # 为每个查询添加language:PHP
-        return [f"{query} language:PHP" for query in optimized_queries]
-
-    def _search_github_projects_optimized(
-        self, query: str, max_projects: int
-    ) -> List[SearchResult]:
-        """
-        优化的GitHub项目搜索 - 修复版本：先找仓库，再搜索内部代码
-
-        Args:
-            query: 搜索查询
-            max_projects: 最大项目数量
-
-        Returns:
-            搜索结果列表
-
-        Raises:
-            GitHubAPIError: GitHub API请求失败
-        """
-        try:
-            # 1. Use Code Search API to find repositories containing specific code
-            print("  🔍 Searching repositories with Code Search API...")
-            # Note: max_projects is the limit for total repositories, not per-page results
-            # We use per_page=100 (GitHub's max) to get more results, then limit later
-            code_search_results = self.github_client.search_code_content(
-                query, language="PHP", per_page=100  # Use max per_page to get more results
-            )
-
-            print(f"  📥 Received {len(code_search_results)} code search results")
-
-            results: List[SearchResult] = []
-            # Collect matched file paths for each repository: repo_full_name -> [file_paths]
-            repo_file_paths: Dict[str, List[str]] = {}
-            processed_repos = set()  # Avoid processing duplicate repositories
-            skipped_repos = 0
-            error_repos = 0
-
-            print("  🔄 Processing search results...")
-            for idx, item in enumerate(code_search_results, 1):
-                try:
-                    # Extract repository information
-                    repository = item.get("repository", {})
-                    full_name = repository.get("full_name", "")
-                    file_path = item.get("path", "")
-                    html_url = item.get("html_url", "")
-                    name = repository.get("name", "")
-                    owner = repository.get("owner", {}).get("login", "unknown")
-
-                    if not full_name:
-                        print(
-                            f"     ⚠️  [{idx}] Skipping invalid repository (no full_name)"
-                        )
-                        skipped_repos += 1
-                        continue
-
-                    # Collect file paths (even if repository is duplicate, collect all matched files)
-                    if full_name not in repo_file_paths:
-                        repo_file_paths[full_name] = []
-                    if file_path and file_path not in repo_file_paths[full_name]:
-                        repo_file_paths[full_name].append(file_path)
-
-                    # Create SearchResult only when first encountering this repository
-                    if full_name not in processed_repos:
-                        processed_repos.add(full_name)
-
-                        # Create SearchResult
-                        result = SearchResult.from_search_item(item)
-                        # Store file path list in metadata
-                        result.add_metadata(
-                            "matched_file_paths", repo_file_paths[full_name]
-                        )
-                        results.append(result)
-
-                        print(f"     ✅ [{idx}] Repository: {full_name}")
-                        print(f"         Owner: {owner}, Repository: {name}")
-                        print(f"         URL: {html_url}")
-                        print(
-                            f"         Matched files: {len(repo_file_paths[full_name])}"
-                        )
-                    else:
-                        # Update file path list for existing SearchResult
-                        for result in results:
-                            if result.project_name == full_name:
-                                result.add_metadata(
-                                    "matched_file_paths", repo_file_paths[full_name]
-                                )
-                                break
-
-                    print(
-                        f"         📄 File [{len(repo_file_paths[full_name])}]: {file_path}"
-                    )
-
-                except Exception as e:
-                    print(f"     ❌ [{idx}] Failed to process repository: {e}")
-                    error_repos += 1
-                    continue
-
-            print("  📊 Processing Summary:")
-            print(f"     Total results: {len(code_search_results)}")
-            print(f"     Successfully processed: {len(results)}")
-            print(f"     Skipped duplicates: {skipped_repos}")
-            print(f"     Processing errors: {error_repos}")
-            print(f"     Unique repositories: {len(processed_repos)}")
-
-            return results
-
-        except Exception as e:
-            print(f"  ❌ GitHub search failed: {e}")
-            import traceback
-
-            print("  📋 Error details:")
-            print(f"     {traceback.format_exc()}")
-            raise GitHubAPIError(f"GitHub search failed: {e}") from e
-
-    def _get_repository_info(self, search_item: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        获取仓库详细信息
-
-        Args:
-            search_item: 搜索项
-
-        Returns:
-            仓库信息
-
-        Raises:
-            GitHubAPIError: API请求失败
-        """
-        repository = search_item.get("repository", {})
-        owner = repository.get("owner", {}).get("login", "")
-        repo_name = repository.get("name", "")
-
-        if not owner or not repo_name:
-            raise GitHubAPIError("Invalid repository information")
-
-        return self.github_client.get_repository_info(owner, repo_name)
-
     def _get_project_files(self, result: SearchResult) -> Dict[str, str]:
         """
-        获取项目的PHP文件内容
-        优化：直接使用Code Search API返回的文件路径，而不是重新扫描仓库根目录
+        Get PHP file content for the project
 
         Args:
-            result: 搜索结果
+            result: Search result
 
         Returns:
-            文件路径到内容的映射
+            Mapping of file path to content
 
         Raises:
-            GitHubAPIError: API请求失败
+            GitHubAPIError: API request failed
         """
         try:
-            # 1. Try to get file paths from Code Search API results in metadata
-            matched_file_paths = result.get_metadata("matched_file_paths")
-            if matched_file_paths and isinstance(matched_file_paths, list):
-                print(
-                    f"      📡 Using Code Search API file paths: {result.owner}/{result.repo_name}"
-                )
-                print(f"      ✅ Found {len(matched_file_paths)} matched file(s)")
-
-                file_contents: Dict[str, str] = {}
-                success_count = 0
-                error_count = 0
-
-                # Limit file count to avoid too many requests
-                max_files = min(len(matched_file_paths), 10)
-
-                for idx, file_path in enumerate(matched_file_paths[:max_files], 1):
-                    try:
-                        print(
-                            f"         📄 [{idx}/{max_files}] Fetching file: {file_path}"
-                        )
-
-                        content = self.github_client.get_file_content(
-                            result.owner, result.repo_name, file_path
-                        )
-                        file_contents[file_path] = content
-
-                        file_size = len(content)
-                        print(f"            ✅ File size: {file_size} characters")
-                        success_count += 1
-
-                    except Exception as e:
-                        error_count += 1
-                        print(f"            ❌ Failed to fetch file: {e}")
-                        continue
-
-                print("      📊 File Fetching Summary:")
-                print(f"         Matched files: {len(matched_file_paths)}")
-                print(f"         Processed files: {max_files}")
-                print(f"         Successfully fetched: {success_count}")
-                print(f"         Fetch errors: {error_count}")
-
-                return file_contents
-
-            # 2. Fallback: scan repository root directory if no Code Search file paths (backward compatibility)
+            # Scan repository root directory for PHP files
             print(
-                f"      📡 Fallback: Scanning repository root: {result.owner}/{result.repo_name}"
+                f"      📡 Scanning repository root: {result.owner}/{result.repo_name}"
             )
             contents = self.github_client.get_repository_contents(
                 result.owner, result.repo_name
@@ -605,13 +420,13 @@ class ProjectSearcher:
         self, analysis_results: Dict[str, Dict[str, Any]]
     ) -> Dict[str, Any]:
         """
-        合并多个文件的分析结果
+        Combine analysis results from multiple files
 
         Args:
-            analysis_results: 文件分析结果
+            analysis_results: File analysis results
 
         Returns:
-            合并后的分析结果
+            Combined analysis result
         """
         combined = {
             "has_superglobal": False,
@@ -625,7 +440,7 @@ class ProjectSearcher:
         }
 
         for _file_path, result in analysis_results.items():
-            # 合并使用情况
+            # Merge usage information
             combined["superglobal_usage"].extend(result.get("superglobal_usage", []))
             combined["dynamic_function_usage"].extend(
                 result.get("dynamic_function_usage", [])
@@ -634,7 +449,7 @@ class ProjectSearcher:
                 result.get("dynamic_include_usage", [])
             )
 
-            # 合并标志
+            # Merge flags
             combined["has_superglobal"] = combined["has_superglobal"] or result.get(
                 "has_superglobal", False
             )
@@ -645,22 +460,22 @@ class ProjectSearcher:
                 "has_dynamic_includes"
             ] or result.get("has_dynamic_includes", False)
 
-        # 生成分析摘要
+        # Generate analysis summary
         combined["analysis_summary"] = self._generate_combined_summary(combined)
 
         return combined
 
     def _generate_combined_summary(self, combined: Dict[str, Any]) -> Dict[str, Any]:
         """
-        生成合并后的分析摘要
+        Generate combined analysis summary
 
         Args:
-            combined: 合并的分析结果
+            combined: Combined analysis result
 
         Returns:
-            分析摘要
+            Analysis summary
         """
-        # 1. 检查SuperGlobal使用
+        # 1. Check SuperGlobal usage
         if not combined["has_superglobal"]:
             return {
                 "status": "rejected",
@@ -668,7 +483,7 @@ class ProjectSearcher:
                 "priority": 0,
             }
 
-        # 2. 检查主要动态函数
+        # 2. Check main dynamic functions
         if combined["has_dynamic_functions"]:
             return {
                 "status": "accepted",
@@ -677,7 +492,7 @@ class ProjectSearcher:
                 "detection_type": "primary_functions",
             }
 
-        # 3. 检查fallback动态includes
+        # 3. Check fallback dynamic includes
         if combined["has_dynamic_includes"]:
             return {
                 "status": "accepted",
@@ -686,7 +501,7 @@ class ProjectSearcher:
                 "detection_type": "fallback_includes",
             }
 
-        # 4. 都不符合
+        # 4. None of the above match
         return {
             "status": "rejected",
             "reason": "No dynamic functions or includes found",
@@ -695,25 +510,25 @@ class ProjectSearcher:
 
     def _meets_criteria(self, result: SearchResult) -> bool:
         """
-        检查项目是否符合筛选标准
+        Check if project meets filtering criteria
 
         Args:
-            result: 搜索结果
+            result: Search result
 
         Returns:
-            是否符合标准
+            Whether it meets the criteria
         """
         return result.is_qualified
 
     def _deduplicate_results(self, results: List[SearchResult]) -> List[SearchResult]:
         """
-        去重搜索结果
+        Deduplicate search results
 
         Args:
-            results: 原始结果列表
+            results: Original result list
 
         Returns:
-            去重后的结果列表
+            Deduplicated result list
         """
         seen = set()
         unique_results: List[SearchResult] = []
@@ -728,10 +543,10 @@ class ProjectSearcher:
 
     def _update_search_stats(self, results: List[SearchResult]) -> None:
         """
-        更新搜索统计信息
+        Update search statistics
 
         Args:
-            results: 搜索结果列表
+            results: Search result list
         """
         self.search_stats["total_searched"] = len(results)
         self.search_stats["qualified_projects"] = sum(
@@ -746,11 +561,11 @@ class ProjectSearcher:
         self, results: List[SearchResult], include_unqualified: bool
     ) -> None:
         """
-        导出结果到CSV
+        Export results to CSV
 
         Args:
-            results: 搜索结果列表
-            include_unqualified: 是否包含不符合条件的项目
+            results: Search result list
+            include_unqualified: Whether to include unqualified projects
         """
         try:
             # Export basic results
@@ -771,7 +586,7 @@ class ProjectSearcher:
             print(f"⚠️  Export failed: {e}")
 
     def _print_search_summary(self) -> None:
-        """打印搜索摘要"""
+        """Print search summary"""
         stats = self.search_stats
         duration = (
             stats["end_time"] - stats["start_time"]
@@ -792,14 +607,14 @@ class ProjectSearcher:
 
     def get_search_statistics(self) -> Dict[str, Any]:
         """
-        获取搜索统计信息
+        Get search statistics
 
         Returns:
-            统计信息字典
+            Statistics dictionary
         """
         return self.search_stats.copy()
 
     def close(self) -> None:
-        """关闭所有资源"""
+        """Close all resources"""
         self.github_client.close()
         self.cache_manager.cleanup_expired()

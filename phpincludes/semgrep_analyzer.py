@@ -1,7 +1,8 @@
 """
-Semgrep静态分析器
+Semgrep Static Analyzer
 
-本模块使用Semgrep进行PHP代码的静态分析，检测动态include/require语句。
+This module uses Semgrep for static analysis of PHP code,
+detecting dynamic include/require statements.
 """
 
 import json
@@ -14,14 +15,14 @@ from .exceptions import SemgrepError
 
 
 class SemgrepAnalyzer:
-    """使用Semgrep进行PHP代码静态分析"""
+    """Performs static analysis of PHP code using Semgrep"""
 
-    def __init__(self, rules_file: str = "config/semgrep_rules.yml") -> None:
+    def __init__(self, rules_file: str = "phpincludes/semgrep/rules.yml") -> None:
         """
-        初始化Semgrep分析器
+        Initialize Semgrep analyzer
 
         Args:
-            rules_file: Semgrep规则文件路径
+            rules_file: Semgrep rules file path
         """
         self.rules_file = Path(rules_file)
         if not self.rules_file.exists():
@@ -29,18 +30,18 @@ class SemgrepAnalyzer:
 
     def detect_dynamic_includes(self, php_content: str) -> List[Dict[str, Any]]:
         """
-        检测PHP代码中的动态include/require语句
+        Detect dynamic include/require statements in PHP code
 
         Args:
-            php_content: PHP代码内容
+            php_content: PHP code content
 
         Returns:
-            检测结果列表，每个结果包含文件路径、行号、规则ID等信息
+            List of detection results, each containing file path, line number, rule ID, etc.
 
         Raises:
-            SemgrepError: Semgrep分析失败
+            SemgrepError: Semgrep analysis failed
         """
-        # 创建临时文件
+        # Create temporary file
         with tempfile.NamedTemporaryFile(
             mode="w", suffix=".php", delete=False
         ) as temp_file:
@@ -48,28 +49,28 @@ class SemgrepAnalyzer:
             temp_file_path = temp_file.name
 
         try:
-            # 运行Semgrep分析
+            # Run Semgrep analysis
             results = self.run_semgrep(temp_file_path)
             return results
         finally:
-            # 清理临时文件
+            # Clean up temporary file
             Path(temp_file_path).unlink(missing_ok=True)
 
     def run_semgrep(self, file_path: str) -> List[Dict[str, Any]]:
         """
-        运行Semgrep分析指定文件
+        Run Semgrep analysis on specified file
 
         Args:
-            file_path: 要分析的文件路径
+            file_path: File path to analyze
 
         Returns:
-            Semgrep分析结果列表
+            List of Semgrep analysis results
 
         Raises:
-            SemgrepError: Semgrep执行失败
+            SemgrepError: Semgrep execution failed
         """
         try:
-            # 构建Semgrep命令
+            # Build Semgrep command
             cmd = [
                 "semgrep",
                 "--config",
@@ -79,7 +80,7 @@ class SemgrepAnalyzer:
                 file_path,
             ]
 
-            # 执行命令
+            # Execute command
             result = subprocess.run(
                 cmd, capture_output=True, text=True, timeout=30, check=False
             )
@@ -91,7 +92,7 @@ class SemgrepAnalyzer:
                     exit_code=result.returncode,
                 )
 
-            # 解析JSON输出
+            # Parse JSON output
             return self.parse_semgrep_output(result.stdout)
 
         except subprocess.TimeoutExpired as e:
@@ -104,22 +105,22 @@ class SemgrepAnalyzer:
 
     def parse_semgrep_output(self, json_output: str) -> List[Dict[str, Any]]:
         """
-        解析Semgrep的JSON输出
+        Parse Semgrep JSON output
 
         Args:
-            json_output: Semgrep的JSON输出字符串
+            json_output: Semgrep JSON output string
 
         Returns:
-            解析后的结果列表
+            Parsed result list
 
         Raises:
-            SemgrepError: JSON解析失败
+            SemgrepError: JSON parsing failed
         """
         try:
             data = json.loads(json_output)
             results = []
 
-            # 提取结果
+            # Extract results
             for result in data.get("results", []):
                 parsed_result = {
                     "rule_id": result.get("check_id"),
@@ -144,22 +145,22 @@ class SemgrepAnalyzer:
         self, file_contents: Dict[str, str]
     ) -> Dict[str, List[Dict[str, Any]]]:
         """
-        分析多个PHP文件
+        Analyze multiple PHP files
 
         Args:
-            file_contents: 文件路径到内容的映射
+            file_contents: Mapping of file paths to content
 
         Returns:
-            每个文件的分析结果
+            Analysis results for each file
 
         Raises:
-            SemgrepError: 分析失败
+            SemgrepError: Analysis failed
         """
         results: Dict[str, List[Dict[str, Any]]] = {}
         temp_files: List[str] = []
 
         try:
-            # 创建临时文件
+            # Create temporary files
             for file_path, content in file_contents.items():
                 temp_file = tempfile.NamedTemporaryFile(
                     mode="w", suffix=".php", delete=False
@@ -168,7 +169,7 @@ class SemgrepAnalyzer:
                 temp_file.close()
                 temp_files.append(str(temp_file.name))
 
-            # 运行Semgrep分析所有文件
+            # Run Semgrep analysis on all files
             cmd = [
                 "semgrep",
                 "--config",
@@ -188,7 +189,7 @@ class SemgrepAnalyzer:
                     exit_code=result.returncode,
                 )
 
-            # 解析结果并按文件分组
+            # Parse results and group by file
             all_results = self.parse_semgrep_output(result.stdout)
             for result_item in all_results:
                 file_path = result_item["file_path"]
@@ -201,19 +202,19 @@ class SemgrepAnalyzer:
         except subprocess.TimeoutExpired as e:
             raise SemgrepError(f"Semgrep execution timeout: {e}", command=" ".join(cmd))
         finally:
-            # 清理临时文件
+            # Clean up temporary file
             for temp_file in temp_files:
                 Path(temp_file).unlink(missing_ok=True)
 
     def get_rule_info(self) -> Dict[str, Any]:
         """
-        获取规则文件信息
+        Get rule file information
 
         Returns:
-            规则文件的基本信息
+            Basic information about the rule file
 
         Raises:
-            SemgrepError: 获取规则信息失败
+            SemgrepError: Get rule information failed
         """
         try:
             cmd = ["semgrep", "--config", str(self.rules_file), "--dump-config"]
@@ -243,13 +244,13 @@ class SemgrepAnalyzer:
 
     def validate_rules(self) -> bool:
         """
-        验证规则文件是否有效
+        Validate if rule file is valid
 
         Returns:
-            规则文件是否有效
+            Whether the rule file is valid
 
         Raises:
-            SemgrepError: 验证失败
+            SemgrepError: Validation failed
         """
         try:
             cmd = ["semgrep", "--config", str(self.rules_file), "--validate"]

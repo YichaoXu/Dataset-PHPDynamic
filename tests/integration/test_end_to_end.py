@@ -9,14 +9,14 @@ import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
 
-from config.settings import Settings
-from src.cache_manager import CacheManager
-from src.csv_exporter import CSVExporter
-from src.exceptions import AnalysisError, GitHubAPIError
-from src.project_searcher import ProjectSearcher
-from src.rate_limit_handler import RateLimitHandler
-from src.search_result import SearchResult
-from src.semgrep_analyzer import SemgrepAnalyzer
+from phpincludes.settings import Settings
+from phpincludes.cache_manager import CacheManager
+from phpincludes.csv_exporter import CSVExporter
+from phpincludes.exceptions import AnalysisError, GitHubAPIError
+from phpincludes.project_searcher import ProjectSearcher
+from phpincludes.rate_limit_handler import RateLimitHandler
+from phpincludes.search_result import SearchResult
+from phpincludes.semgrep_analyzer import SemgrepAnalyzer
 
 
 class TestEndToEndWorkflow(unittest.TestCase):
@@ -136,7 +136,7 @@ if (isset($_POST['action'])) {
         ]
         return mock_analyzer
 
-    @patch("src.project_searcher.GitHubAPIClient")
+    @patch("phpincludes.project_searcher.GitHubAPIClient")
     def test_complete_filtering_workflow(self, mock_github_client_class) -> None:
         """测试完整的筛选工作流程"""
         # 设置模拟
@@ -154,7 +154,6 @@ if (isset($_POST['action'])) {
         try:
             # 执行搜索
             results = searcher.search_projects(
-                search_queries=["test query"],
                 max_projects=1,
                 export_csv=True,
                 include_unqualified=False,
@@ -181,7 +180,7 @@ if (isset($_POST['action'])) {
     def test_error_handling_scenarios(self) -> None:
         """测试错误处理场景"""
         # 测试GitHub API错误
-        with patch("src.project_searcher.GitHubAPIClient") as mock_client_class:
+        with patch("phpincludes.project_searcher.GitHubAPIClient") as mock_client_class:
             mock_client = Mock()
             mock_client.search_code_content.side_effect = GitHubAPIError(
                 "API request failed", status_code=403
@@ -197,12 +196,12 @@ if (isset($_POST['action'])) {
 
             try:
                 with self.assertRaises(GitHubAPIError):
-                    searcher.search_projects(["test query"], max_projects=1)
+                    searcher.search_projects(max_projects=1)
             finally:
                 searcher.close()
 
         # 测试分析错误
-        with patch("src.project_searcher.GitHubAPIClient") as mock_client_class:
+        with patch("phpincludes.project_searcher.GitHubAPIClient") as mock_client_class:
             mock_client = self._create_mock_github_client()
             mock_client.get_file_content.side_effect = AnalysisError(
                 "File analysis failed", file_path="test.php"
@@ -217,7 +216,7 @@ if (isset($_POST['action'])) {
             )
 
             try:
-                results = searcher.search_projects(["test query"], max_projects=1)
+                results = searcher.search_projects(max_projects=1)
                 # 应该返回空结果而不是抛出异常
                 self.assertEqual(len(results), 0)
             finally:
@@ -395,7 +394,7 @@ if (isset($_POST['action'])) {
     def test_edge_cases(self) -> None:
         """测试边界情况"""
         # 测试空搜索结果
-        with patch("src.project_searcher.GitHubAPIClient") as mock_client_class:
+        with patch("phpincludes.project_searcher.GitHubAPIClient") as mock_client_class:
             mock_client = Mock()
             mock_client.search_code_content.return_value = []
             mock_client_class.return_value = mock_client
@@ -408,7 +407,7 @@ if (isset($_POST['action'])) {
             )
 
             try:
-                results = searcher.search_projects(["test query"], max_projects=1)
+                results = searcher.search_projects(max_projects=1)
                 self.assertEqual(len(results), 0)
             finally:
                 searcher.close()

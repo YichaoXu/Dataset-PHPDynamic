@@ -1,14 +1,14 @@
 """
-异常类定义
+Exception Classes
 
-本模块定义了项目中使用的所有自定义异常类。
+This module defines all custom exception classes used in the project.
 """
 
 from typing import Optional
 
 
 class GitHubAPIError(Exception):
-    """GitHub API请求失败或返回错误时抛出"""
+    """Raised when GitHub API request fails or returns an error"""
 
     def __init__(
         self,
@@ -22,7 +22,7 @@ class GitHubAPIError(Exception):
 
 
 class AnalysisError(Exception):
-    """PHP代码分析过程中出现错误时抛出"""
+    """Raised when an error occurs during PHP code analysis"""
 
     def __init__(
         self,
@@ -36,7 +36,7 @@ class AnalysisError(Exception):
 
 
 class SemgrepError(Exception):
-    """Semgrep静态分析失败时抛出"""
+    """Raised when Semgrep static analysis fails"""
 
     def __init__(
         self,
@@ -50,7 +50,7 @@ class SemgrepError(Exception):
 
 
 class CacheError(Exception):
-    """缓存操作失败时抛出"""
+    """Raised when cache operation fails"""
 
     def __init__(
         self, message: str, operation: Optional[str] = None, key: Optional[str] = None
@@ -61,7 +61,7 @@ class CacheError(Exception):
 
 
 class RateLimitError(Exception):
-    """GitHub API速率限制被触发时抛出"""
+    """Raised when GitHub API rate limit is triggered"""
 
     def __init__(
         self,

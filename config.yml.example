@@ -1,9 +1,12 @@
 # PHPIncludes Configuration File
 # Copy this file to config.yml and modify as needed
+#
+# This file contains ALL default configuration values.
+# Copy to config.yml and customize as needed.
 
 # GitHub API Configuration
 github:
-  # GitHub API Token (Personal Access Token)
+  # GitHub API Token (Personal Access Token) - REQUIRED
   # Get your token from: https://github.com/settings/tokens
   # Leave empty to use GITHUB_TOKEN environment variable
   api_token: ""
@@ -14,24 +17,10 @@ github:
 # Search Configuration
 search:
   # Maximum number of projects to search
-  max_projects: 1000
+  max_projects: 200
   
   # Maximum number of PHP files to analyze per project
   max_files_per_project: 10
-  
-  # Delay between API requests (seconds)
-  search_delay: 0.5
-  
-  # Language filter for search queries
-  default_language: "PHP"
-  
-  # Custom search queries (optional)
-  # Leave empty to use default queries
-  custom_queries: []
-  # Example:
-  # custom_queries:
-  #   - "call_user_func language:PHP"
-  #   - "include $_GET language:PHP"
 
 # Cache Configuration
 cache:
@@ -54,8 +43,8 @@ rate_limit:
 
 # Semgrep Configuration
 semgrep:
-  # Semgrep rules file path
-  rules_file: "config/semgrep_rules.yml"
+  # Semgrep rules file path (internal implementation detail)
+  rules_file: "phpincludes/semgrep/rules.yml"
   
   # Semgrep execution timeout (seconds)
   timeout: 30
@@ -94,4 +83,3 @@ logging:
   
   # Log format
   log_format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-

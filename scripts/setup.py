@@ -118,7 +118,7 @@ class ProjectSetup:
         try:
             # 导入配置模块
             sys.path.insert(0, str(self.project_root))
-            from config.settings import Settings
+            from phpincludes.settings import Settings
 
             # 验证配置
             validation_results = Settings.validate_config()
@@ -214,7 +214,7 @@ class ProjectSetup:
         # 检查GitHub令牌
         try:
             sys.path.insert(0, str(self.project_root))
-            from config.settings import Settings
+            from phpincludes.settings import Settings
 
             Settings.get_github_token()
             results["github_token"] = True
@@ -251,7 +251,7 @@ class ProjectSetup:
 
         try:
             sys.path.insert(0, str(self.project_root))
-            from config.settings import Settings
+            from phpincludes.settings import Settings
 
             # 设置环境变量
             os.environ[Settings.GITHUB_API_TOKEN_ENV] = token

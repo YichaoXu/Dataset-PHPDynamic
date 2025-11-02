@@ -1,7 +1,7 @@
 """
-PHP代码分析器
+PHP Code Analyzer
 
-本模块分析PHP代码，检测SuperGlobal使用、动态函数调用和动态include语句。
+This module analyzes PHP code, detecting SuperGlobal usage, dynamic function calls, and dynamic include statements.
 """
 
 import re
@@ -14,18 +14,18 @@ from .semgrep_analyzer import SemgrepAnalyzer
 
 
 class PHPAnalyzer:
-    """PHP代码分析器，检测安全风险特征"""
+    """PHP code analyzer that detects security risk characteristics"""
 
     def __init__(self, semgrep_analyzer: Optional[SemgrepAnalyzer] = None) -> None:
         """
-        初始化PHP分析器
+        Initialize PHP analyzer
 
         Args:
-            semgrep_analyzer: Semgrep分析器实例
+            semgrep_analyzer: Semgrep analyzer instance
         """
         self.semgrep_analyzer = semgrep_analyzer or SemgrepAnalyzer()
 
-        # 定义要检测的模式
+        # Define patterns to detect
         self.superglobal_patterns = [
             r"\$_GET\s*\[",
             r"\$_POST\s*\[",
@@ -46,17 +46,17 @@ class PHPAnalyzer:
 
     def analyze_file_content(self, file_path: str, content: str) -> Dict[str, Any]:
         """
-        分析PHP文件内容
+        Analyze PHP file content
 
         Args:
-            file_path: 文件路径
-            content: 文件内容
+            file_path: File path
+            content: File content
 
         Returns:
-            分析结果字典
+            Analysis result dictionary
 
         Raises:
-            AnalysisError: 分析失败
+            AnalysisError: Analysis failed
         """
         try:
             result = {
@@ -70,12 +70,12 @@ class PHPAnalyzer:
                 "analysis_summary": {},
             }
 
-            # 1. 检查SuperGlobal使用
+            # 1. Check SuperGlobal usage
             superglobal_result = self.check_superglobal_requirement(content)
             result["has_superglobal"] = superglobal_result["found"]
             result["superglobal_usage"] = superglobal_result["usage"]
 
-            # 如果SuperGlobal不存在，直接返回
+            # If SuperGlobal does not exist, return directly
             if not result["has_superglobal"]:
                 result["analysis_summary"] = {
                     "status": "rejected",
@@ -83,24 +83,24 @@ class PHPAnalyzer:
                 }
                 return result
 
-            # 2. 检查主要动态函数（call_user_func等）
+            # 2. Check main dynamic functions (call_user_func, etc.)
             function_result = self.check_primary_functions(content)
             result["has_dynamic_functions"] = function_result["found"]
             result["dynamic_function_usage"] = function_result["usage"]
 
-            # 2b. 检查变量函数调用（$var() 和 $$var()）
+            # 2b. Check variable function calls ($var() and $$var())
             variable_function_result = self.check_variable_functions(content)
             if variable_function_result["found"]:
                 result["has_dynamic_functions"] = True
                 result["dynamic_function_usage"].extend(variable_function_result["usage"])
 
-            # 3. 如果主要函数不存在，检查fallback includes
+            # 3. If main functions do not exist, check fallback includes
             if not result["has_dynamic_functions"]:
                 include_result = self.check_fallback_includes(content)
                 result["has_dynamic_includes"] = include_result["found"]
                 result["dynamic_include_usage"] = include_result["usage"]
 
-            # 4. 生成分析摘要
+            # 4. Generate analysis summary
             result["analysis_summary"] = self._generate_analysis_summary(result)
 
             return result
@@ -115,10 +115,10 @@ class PHPAnalyzer:
         检查SuperGlobal使用要求
 
         Args:
-            content: PHP代码内容
+            content: PHP代码content
 
         Returns:
-            检查结果字典
+            检查result字典
         """
         usage = []
         found_patterns = set()
@@ -145,13 +145,13 @@ class PHPAnalyzer:
 
     def check_primary_functions(self, content: str) -> Dict[str, Any]:
         """
-        检查主要动态函数调用（call_user_func等）
+        Check main dynamic function calls (call_user_func, etc.)
 
         Args:
-            content: PHP代码内容
+            content: PHP code content
 
         Returns:
-            检查结果字典
+            Check result dictionary
         """
         usage = []
         found_patterns = set()
@@ -178,27 +178,27 @@ class PHPAnalyzer:
 
     def check_variable_functions(self, content: str) -> Dict[str, Any]:
         """
-        检查变量函数调用（$var() 和 $$var()）
-        使用Semgrep进行精确检测，类似于AST分析中的ast_call节点检查
-        在AST分析中，我们会检查ast_call节点的func是expr类型（变量表达式）
-        Semgrep内部使用AST分析，可以精确匹配 $VAR(...) 和 $$VAR(...) 模式
+        Check variable function calls ($var() and $$var())
+        Uses Semgrep for precise detection, similar to ast_call node checking in AST analysis
+        In AST analysis, we check if ast_call node's func is expr type (variable expression)
+        Semgrep internally uses AST analysis and can precisely match $VAR(...) and $$VAR(...) patterns
 
         Args:
-            content: PHP代码内容
+            content: PHP code content
 
         Returns:
-            检查结果字典
+            Check result dictionary
         """
         temp_file_path = None
         try:
-            # 使用Semgrep检测变量函数调用
-            # 创建临时文件用于Semgrep分析
+            # Use Semgrep to detect variable function calls
+            # Create temporary file for Semgrep analysis
             temp_file_path = self._create_temp_file(content)
             semgrep_results = self.semgrep_analyzer.run_semgrep(temp_file_path)
 
             usage = []
             for result in semgrep_results:
-                # 只提取变量函数调用的检测结果（rule_id: variable-function-call）
+                # Only extract variable function call detection results (rule_id: variable-function-call)
                 if result.get("rule_id") == "variable-function-call":
                     usage.append(
                         {
@@ -225,24 +225,24 @@ class PHPAnalyzer:
             }
 
         except Exception:
-            # 如果Semgrep失败，使用正则表达式fallback
+            # If Semgrep failed, use regex fallback
             return self._fallback_variable_function_detection(content)
         finally:
-            # 清理临时文件
+            # Clean up temporary file
             if temp_file_path:
                 Path(temp_file_path).unlink(missing_ok=True)
 
     def _fallback_variable_function_detection(self, content: str) -> Dict[str, Any]:
         """
-        使用正则表达式的fallback变量函数检测
+        Fallback variable function detection using regex
 
         Args:
-            content: PHP代码内容
+            content: PHP code content
 
         Returns:
-            检测结果字典
+            Detection result dictionary
         """
-        # 匹配 $var() 和 $$var() 形式的变量函数调用
+        # Match variable function calls in the form $var() and $$var()
         variable_function_patterns = [
             r"\$\w+\s*\(",  # $var(
             r"\$\$\w+\s*\(",  # $$var(
@@ -269,13 +269,13 @@ class PHPAnalyzer:
 
     def _create_temp_file(self, content: str) -> str:
         """
-        创建临时文件用于Semgrep分析
+        Create temporary file for Semgrep analysis
 
         Args:
-            content: PHP代码内容
+            content: PHP code content
 
         Returns:
-            临时文件路径
+            Temporary file path
         """
 
         temp_file = tempfile.NamedTemporaryFile(
@@ -288,16 +288,16 @@ class PHPAnalyzer:
 
     def check_fallback_includes(self, content: str) -> Dict[str, Any]:
         """
-        检查fallback动态include语句
+        Check fallback dynamic include statements
 
         Args:
-            content: PHP代码内容
+            content: PHP code content
 
         Returns:
-            检查结果字典
+            Check result dictionary
         """
         try:
-            # 使用Semgrep进行更精确的分析
+            # Use Semgrep for more precise analysis
             semgrep_results = self.semgrep_analyzer.detect_dynamic_includes(content)
 
             usage = []
@@ -322,18 +322,18 @@ class PHPAnalyzer:
             }
 
         except Exception:
-            # 如果Semgrep失败，使用正则表达式fallback
+            # If Semgrep failed, use regex fallback
             return self._fallback_include_detection(content)
 
     def _fallback_include_detection(self, content: str) -> Dict[str, Any]:
         """
-        使用正则表达式的fallback include检测
+        Fallback include detection using regex
 
         Args:
-            content: PHP代码内容
+            content: PHP code content
 
         Returns:
-            检测结果字典
+            Detection result dictionary
         """
         include_patterns = [
             r"(include|include_once|require|require_once)\s*\(\s*\$[^)]+\s*\)",
@@ -359,15 +359,15 @@ class PHPAnalyzer:
 
     def _get_context(self, content: str, position: int, context_lines: int = 3) -> str:
         """
-        获取指定位置的上下文
+        Get context at specified position
 
         Args:
-            content: 文件内容
-            position: 位置
-            context_lines: 上下文行数
+            content: File content
+            position: Position
+            context_lines: Number of context lines
 
         Returns:
-            上下文字符串
+            Context string
         """
         lines = content.split("\n")
         line_number = content[:position].count("\n")
@@ -386,18 +386,18 @@ class PHPAnalyzer:
         self, content: str, line_number: int, context_lines: int = 3
     ) -> str:
         """
-        根据行号获取上下文
+        Get context by line number
 
         Args:
-            content: 文件内容
-            line_number: 行号（1-based）
-            context_lines: 上下文行数
+            content: File content
+            line_number: Line number (1-based)
+            context_lines: Number of context lines
 
         Returns:
-            上下文字符串
+            Context string
         """
         lines = content.split("\n")
-        actual_line = line_number - 1  # 转换为0-based
+        actual_line = line_number - 1  # Convert to 0-based
 
         start_line = max(0, actual_line - context_lines)
         end_line = min(len(lines), actual_line + context_lines + 1)
@@ -411,13 +411,13 @@ class PHPAnalyzer:
 
     def _generate_analysis_summary(self, result: Dict[str, Any]) -> Dict[str, Any]:
         """
-        生成分析摘要
+        Generate analysis summary
 
         Args:
-            result: 分析结果
+            result: Analysis result
 
         Returns:
-            分析摘要
+            Analysis summary
         """
         if not result["has_superglobal"]:
             return {
@@ -452,13 +452,13 @@ class PHPAnalyzer:
         self, file_contents: Dict[str, str]
     ) -> Dict[str, Dict[str, Any]]:
         """
-        分析多个PHP文件
+        Analyze multiple PHP files
 
         Args:
-            file_contents: 文件路径到内容的映射
+            file_contents: Mapping of file path to content
 
         Returns:
-            每个文件的分析结果
+            Analysis result for each file
         """
         results = {}
 
@@ -481,13 +481,13 @@ class PHPAnalyzer:
         self, results: Dict[str, Dict[str, Any]]
     ) -> Dict[str, Any]:
         """
-        获取分析统计信息
+        GetAnalyzeCount信息
 
         Args:
-            results: 分析结果字典
+            results: Analysis result dictionary
 
         Returns:
-            统计信息
+            Count信息
         """
         total_files = len(results)
         accepted_files = 0

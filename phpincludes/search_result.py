@@ -1,7 +1,7 @@
 """
-搜索结果数据模型
+Search Result Data Model
 
-本模块定义了搜索结果的数据结构，用于存储项目信息和分析结果。
+This module defines the data structure for search results, used to store project information and analysis results.
 """
 
 import re
@@ -9,7 +9,7 @@ from typing import Any, Dict, List, Optional
 
 
 class SearchResult:
-    """存储单个项目的搜索结果和分析数据"""
+    """Stores search results and analysis data for a single project"""
 
     def __init__(
         self,
@@ -21,15 +21,15 @@ class SearchResult:
         analysis_result: Optional[Dict[str, Any]] = None,
     ) -> None:
         """
-        初始化搜索结果
+        Initialize search result
 
         Args:
-            owner: 仓库所有者
-            repo_name: 仓库名称
-            url: 仓库URL
-            commit_hash: 当前提交哈希
-            star_count: 星标数量
-            analysis_result: PHP分析结果
+            owner: Repository owner
+            repo_name: Repository name
+            url: Repository URL
+            commit_hash: Current commit hash
+            star_count: Star count
+            analysis_result: PHP analysis result
         """
         self.owner = owner
         self.repo_name = repo_name
@@ -40,27 +40,27 @@ class SearchResult:
 
     @property
     def project_name(self) -> str:
-        """获取完整项目名称"""
+        """Get full project name"""
         return f"{self.owner}/{self.repo_name}"
 
     @property
     def detection_type(self) -> str:
-        """获取检测类型"""
+        """Get detection type"""
         summary = self.analysis_result.get("analysis_summary", {})
         return str(summary.get("detection_type", "unknown"))
 
     @property
     def superglobal_usage(self) -> List[str]:
-        """获取SuperGlobal使用情况（去重后的SuperGlobal类型）"""
+        """Get SuperGlobal usage (deduplicated SuperGlobal types)"""
         usage = self.analysis_result.get("superglobal_usage", [])
-        # 提取实际的SuperGlobal变量名（从pattern或match中）
+        # Extract actual SuperGlobal variable names (from pattern or match)
         superglobals = set()
         for item in usage:
             match = item.get("match", "")
             pattern = item.get("pattern", "")
-            # 从匹配内容或模式中提取SuperGlobal类型
+            # Extract SuperGlobal type from matched content or pattern
             if match:
-                # 提取 $_VAR 格式
+                # Extract $_VAR format
                 matches = re.findall(
                     r"\$_(GET|POST|REQUEST|COOKIE|SESSION|SERVER|FILES|ENV)",
                     match,
@@ -78,20 +78,20 @@ class SearchResult:
 
     @property
     def function_usage(self) -> List[str]:
-        """获取动态函数使用情况（去重后的函数名）"""
+        """Get dynamic function usage (deduplicated function names)"""
         usage = self.analysis_result.get("dynamic_function_usage", [])
-        # 提取函数名称
+        # Extract function names
         functions = set()
         for item in usage:
             match = item.get("match", "")
             pattern = item.get("pattern", "")
             rule_id = item.get("rule_id", "")
 
-            # 如果是Semgrep检测的变量函数调用
+            # If it is a variable function call detected by Semgrep
             if rule_id == "variable-function-call":
                 functions.add("variable_function_call")
             elif match:
-                # 提取函数名：call_user_func, call_user_func_array, forward_static_call, forward_static_call_array
+                # Extract function names: call_user_func, call_user_func_array, forward_static_call, forward_static_call_array
                 func_matches = re.findall(
                     r"(call_user_func(?:_array)?|forward_static_call(?:_array)?)",
                     match,
@@ -109,20 +109,20 @@ class SearchResult:
 
     @property
     def dynamic_include_usage(self) -> List[str]:
-        """获取动态include使用情况（去重后的类型）"""
+        """Get dynamic include usage (deduplicated types)"""
         usage = self.analysis_result.get("dynamic_include_usage", [])
-        # 提取include类型
+        # Extract include types
         include_types = set()
         for item in usage:
             rule_id = item.get("rule_id", "")
             if rule_id:
-                # 从rule_id提取类型：dynamic-include-detection -> include
+                # Extract type from rule_id: dynamic-include-detection -> include
                 if "include" in rule_id:
                     include_types.add("include")
                 elif "require" in rule_id:
                     include_types.add("require")
             else:
-                # 从pattern中提取
+                # Extract from pattern
                 pattern = item.get("pattern", "")
                 if pattern:
                     matches = re.findall(
@@ -133,28 +133,28 @@ class SearchResult:
 
     @property
     def is_qualified(self) -> bool:
-        """判断项目是否符合要求"""
+        """Check if project meets requirements"""
         summary = self.analysis_result.get("analysis_summary", {})
         return bool(summary.get("status") == "accepted")
 
     @property
     def priority(self) -> int:
-        """获取项目优先级"""
+        """Get project priority"""
         summary = self.analysis_result.get("analysis_summary", {})
         return int(summary.get("priority", 0))
 
     @property
     def rejection_reason(self) -> str:
-        """获取拒绝原因"""
+        """Get rejection reason"""
         summary = self.analysis_result.get("analysis_summary", {})
         return str(summary.get("reason", ""))
 
     def to_csv_row(self) -> Dict[str, Any]:
         """
-        转换为CSV行数据
+        Convert to CSV row data
 
         Returns:
-            CSV行数据字典
+            CSV row data dictionary (only basic information needed for download and analysis)
         """
         return {
             "project_name": self.project_name,
@@ -164,23 +164,14 @@ class SearchResult:
             "commit_hash": self.commit_hash,
             "star_count": self.star_count,
             "detection_type": self.detection_type,
-            "is_qualified": self.is_qualified,
-            "priority": self.priority,
-            "superglobal_usage": self._format_usage_list(self.superglobal_usage),
-            "function_usage": self._format_usage_list(self.function_usage),
-            "dynamic_include_usage": self._format_usage_list(
-                self.dynamic_include_usage
-            ),
-            "rejection_reason": self.rejection_reason,
-            "analysis_timestamp": self.analysis_result.get("timestamp", ""),
         }
 
     def to_dict(self) -> Dict[str, Any]:
         """
-        转换为字典格式
+        Convert to dictionary format
 
         Returns:
-            字典格式的数据
+            Dictionary format data
         """
         return {
             "project_name": self.project_name,
@@ -197,25 +188,25 @@ class SearchResult:
 
     def _format_usage_list(self, usage_list: List[str]) -> str:
         """
-        格式化使用情况列表为字符串（去重并格式化）
+        Format usage list as string (deduplicated and formatted)
 
         Args:
-            usage_list: 使用情况列表（已经去重）
+            usage_list: Usage list (already deduplicated)
 
         Returns:
-            格式化后的字符串
+            Formatted string
         """
         if not usage_list:
             return ""
-        # 使用逗号连接，更易读
+        # Use comma separator for better readability
         return ", ".join(usage_list)
 
     def get_detailed_analysis(self) -> Dict[str, Any]:
         """
-        获取详细分析信息
+        Get detailed analysis information
 
         Returns:
-            详细分析信息字典
+            Detailed analysis information dictionary
         """
         return {
             "superglobal_details": self.analysis_result.get("superglobal_usage", []),
@@ -226,20 +217,20 @@ class SearchResult:
 
     def update_analysis_result(self, analysis_result: Dict[str, Any]) -> None:
         """
-        更新分析结果
+        Update analysis result
 
         Args:
-            analysis_result: 新的分析结果
+            analysis_result: New analysis result
         """
         self.analysis_result = analysis_result
 
     def add_metadata(self, key: str, value: Any) -> None:
         """
-        添加元数据
+        Add metadata
 
         Args:
-            key: 键名
-            value: 值
+            key: Key name
+            value: Value
         """
         if "metadata" not in self.analysis_result:
             self.analysis_result["metadata"] = {}
@@ -247,25 +238,25 @@ class SearchResult:
 
     def get_metadata(self, key: str, default: Any = None) -> Any:
         """
-        获取元数据
+        Get metadata
 
         Args:
-            key: 键名
-            default: 默认值
+            key: Key name
+            default: Default value
 
         Returns:
-            元数据值
+            Metadata value
         """
         metadata = self.analysis_result.get("metadata", {})
         return metadata.get(key, default)
 
     def __str__(self) -> str:
-        """字符串表示"""
+        """String representation"""
         status = "QUALIFIED" if self.is_qualified else "REJECTED"
         return f"SearchResult({self.project_name}, {status}, {self.detection_type})"
 
     def __repr__(self) -> str:
-        """详细字符串表示"""
+        """Detailed string representation"""
         return (
             f"SearchResult(owner='{self.owner}', repo_name='{self.repo_name}', "
             f"url='{self.url}', commit_hash='{self.commit_hash}', "
@@ -277,26 +268,40 @@ class SearchResult:
         cls,
         github_data: Dict[str, Any],
         analysis_result: Optional[Dict[str, Any]] = None,
+        github_client: Optional[Any] = None,
     ) -> "SearchResult":
         """
-        从GitHub数据创建SearchResult实例
+        Create SearchResult instance from GitHub data
 
         Args:
-            github_data: GitHub API返回的数据
-            analysis_result: PHP分析结果
+            github_data: GitHub API returned data
+            analysis_result: PHP analysis result
+            github_client: GitHub API client (for getting commit SHA)
 
         Returns:
-            SearchResult实例
+            SearchResult instance
         """
-        # 从GitHub数据中提取信息
+        # Extract information from GitHub data
         full_name = github_data.get("full_name", "")
         owner, repo_name = full_name.split("/", 1) if "/" in full_name else ("", "")
+        default_branch = github_data.get("default_branch", "main")
+
+        # Get actual commit SHA (if possible)
+        commit_hash = default_branch  # Default to use branch name
+        if github_client and owner and repo_name:
+            try:
+                commit_hash = github_client.get_branch_commit_sha(
+                    owner, repo_name, default_branch
+                )
+            except Exception:
+                # If get failed, use branch name as fallback
+                commit_hash = default_branch
 
         return cls(
             owner=owner,
             repo_name=repo_name,
             url=github_data.get("html_url", ""),
-            commit_hash=github_data.get("default_branch", "main"),
+            commit_hash=commit_hash,
             star_count=github_data.get("stargazers_count", 0),
             analysis_result=analysis_result,
         )
@@ -306,26 +311,40 @@ class SearchResult:
         cls,
         repo_item: Dict[str, Any],
         analysis_result: Optional[Dict[str, Any]] = None,
+        github_client: Optional[Any] = None,
     ) -> "SearchResult":
         """
-        从GitHub仓库搜索结果创建SearchResult实例
+        Create SearchResult instance from GitHub repository search result
 
         Args:
-            repo_item: GitHub仓库搜索API返回的项
-            analysis_result: PHP分析结果
+            repo_item: GitHub repository search API returned item
+            analysis_result: PHP analysis result
+            github_client: GitHub API client (for getting commit SHA)
 
         Returns:
-            SearchResult实例
+            SearchResult instance
         """
-        # 从仓库信息中提取数据
+        # Extract data from repository information
         full_name = repo_item.get("full_name", "")
         owner, repo_name = full_name.split("/", 1) if "/" in full_name else ("", "")
+        default_branch = repo_item.get("default_branch", "main")
+
+        # Get actual commit SHA (if possible)
+        commit_hash = default_branch  # Default to use branch name
+        if github_client and owner and repo_name:
+            try:
+                commit_hash = github_client.get_branch_commit_sha(
+                    owner, repo_name, default_branch
+                )
+            except Exception:
+                # If get failed, use branch name as fallback
+                commit_hash = default_branch
 
         return cls(
             owner=owner,
             repo_name=repo_name,
             url=repo_item.get("html_url", ""),
-            commit_hash=repo_item.get("default_branch", "main"),
+            commit_hash=commit_hash,
             star_count=repo_item.get("stargazers_count", 0),
             analysis_result=analysis_result,
         )
@@ -336,31 +355,44 @@ class SearchResult:
         search_item: Dict[str, Any],
         repo_info: Optional[Dict[str, Any]] = None,
         analysis_result: Optional[Dict[str, Any]] = None,
+        github_client: Optional[Any] = None,
     ) -> "SearchResult":
         """
-        从GitHub搜索项创建SearchResult实例
+        Create SearchResult instance from GitHub search item
 
         Args:
-            search_item: GitHub搜索API返回的项
-            repo_info: 仓库详细信息
-            analysis_result: PHP分析结果
+            search_item: GitHub search API returned item
+            repo_info: Repository detailed information
+            analysis_result: PHP analysis result
+            github_client: GitHub API client (for getting commit SHA)
 
         Returns:
-            SearchResult实例
+            SearchResult instance
         """
         repository = search_item.get("repository", {})
         full_name = repository.get("full_name", "")
         owner, repo_name = full_name.split("/", 1) if "/" in full_name else ("", "")
 
-        # 使用repo_info中的信息（如果可用）
+        # Use information from repo_info (if available)
         if repo_info:
             star_count = repo_info.get("stargazers_count", 0)
             url = repo_info.get("html_url", "")
-            commit_hash = repo_info.get("default_branch", "main")
+            default_branch = repo_info.get("default_branch", "main")
         else:
             star_count = repository.get("stargazers_count", 0)
             url = repository.get("html_url", "")
-            commit_hash = repository.get("default_branch", "main")
+            default_branch = repository.get("default_branch", "main")
+
+        # Get actual commit SHA (if possible)
+        commit_hash = default_branch  # Default to use branch name
+        if github_client and owner and repo_name:
+            try:
+                commit_hash = github_client.get_branch_commit_sha(
+                    owner, repo_name, default_branch
+                )
+            except Exception:
+                # If get failed, use branch name as fallback
+                commit_hash = default_branch
 
         return cls(
             owner=owner,

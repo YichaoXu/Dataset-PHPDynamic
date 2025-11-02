@@ -1,7 +1,7 @@
 """
-缓存管理器
+Cache Manager
 
-本模块提供基于SQLite的缓存功能，用于存储GitHub API请求结果。
+This module provides SQLite-based caching functionality for storing GitHub API request results.
 """
 
 import hashlib
@@ -15,28 +15,28 @@ from .exceptions import CacheError
 
 
 class CacheManager:
-    """管理API请求的缓存，避免重复查询"""
+    """Manages caching of API requests to avoid duplicate queries"""
 
     def __init__(
         self, db_path: str = "data/cache/github_cache.db", expire_after: int = 3600
     ) -> None:
         """
-        初始化缓存管理器
+        Initialize cache manager
 
         Args:
-            db_path: SQLite数据库文件路径
-            expire_after: 缓存过期时间（秒）
+            db_path: SQLite database file path
+            expire_after: Cache expiration time in seconds
         """
         self.db_path = Path(db_path)
         self.expire_after = expire_after
 
-        # 确保缓存目录存在
+        # Ensure cache directory exists
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
 
         self._init_database()
 
     def _init_database(self) -> None:
-        """初始化数据库表"""
+        """Initialize database table"""
         try:
             with sqlite3.connect(self.db_path) as conn:
                 conn.execute(
@@ -60,16 +60,16 @@ class CacheManager:
 
     def get(self, key: str) -> Optional[Any]:
         """
-        从缓存中获取数据
+        Get data from cache
 
         Args:
-            key: 缓存键
+            key: Cache key
 
         Returns:
-            缓存的数据或None（如果不存在或已过期）
+            Cache data or None (if not exists or expired)
 
         Raises:
-            CacheError: 缓存读取失败
+            CacheError: Cache read failed
         """
         try:
             with sqlite3.connect(self.db_path) as conn:
@@ -83,7 +83,7 @@ class CacheManager:
 
                 value, expires_at = row
 
-                # 检查是否过期
+                # Check if expired
                 if time.time() > expires_at:
                     self.delete(key)
                     return None
@@ -97,15 +97,15 @@ class CacheManager:
 
     def set(self, key: str, value: Any, expire_after: Optional[int] = None) -> None:
         """
-        将数据存储到缓存
+        Store data to cache
 
         Args:
-            key: 缓存键
-            value: 要缓存的数据
-            expire_after: 过期时间（秒），None使用默认值
+            key: Cache key
+            value: Data to cache
+            expire_after: Expiration time in seconds, None uses default
 
         Raises:
-            CacheError: 缓存写入失败
+            CacheError: Cache write failed
         """
         try:
             expire_time = expire_after or self.expire_after
@@ -127,13 +127,13 @@ class CacheManager:
 
     def delete(self, key: str) -> None:
         """
-        从缓存中删除数据
+        Delete data from cache
 
         Args:
-            key: 缓存键
+            key: Cache key
 
         Raises:
-            CacheError: 缓存删除失败
+            CacheError: Cache delete failed
         """
         try:
             with sqlite3.connect(self.db_path) as conn:
@@ -145,10 +145,10 @@ class CacheManager:
 
     def clear(self) -> None:
         """
-        清空所有缓存
+        Clear all cache
 
         Raises:
-            CacheError: 缓存清空失败
+            CacheError: Cache clear failed
         """
         try:
             with sqlite3.connect(self.db_path) as conn:
@@ -158,13 +158,13 @@ class CacheManager:
 
     def cleanup_expired(self) -> int:
         """
-        清理过期的缓存条目
+        Clean up expired cache entries
 
         Returns:
-            删除的条目数量
+            Number of deleted entries
 
         Raises:
-            CacheError: 清理失败
+            CacheError: Clean up failed
         """
         try:
             with sqlite3.connect(self.db_path) as conn:
@@ -179,14 +179,14 @@ class CacheManager:
         self, url: str, params: Optional[Dict[str, Any]] = None
     ) -> str:
         """
-        生成缓存键
+        Generate cache key
 
         Args:
             url: API URL
-            params: 查询参数
+            params: Query parameters
 
         Returns:
-            缓存键字符串
+            Cache key string
         """
         key_data: Dict[str, Any] = {"url": url}
         if params:
@@ -197,10 +197,10 @@ class CacheManager:
 
     def get_stats(self) -> dict:
         """
-        获取缓存统计信息
+        Get cache statistics
 
         Returns:
-            包含缓存统计信息的字典
+            Dictionary containing cache statistics
         """
         try:
             with sqlite3.connect(self.db_path) as conn:

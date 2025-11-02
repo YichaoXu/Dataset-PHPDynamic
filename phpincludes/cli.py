@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """
-PHPIncludes - PHP Project Dynamic Include/Require Detection Tool
+PHPIncludes - PHP Project Dataset Collection Tool
 
-Main program entry point providing command-line interface for searching and analyzing PHP projects.
+CLI interface for collecting PHP projects from GitHub that meet specific criteria.
+The goal is to obtain accurate datasets of projects with specific characteristics.
 """
 
 import argparse
@@ -10,9 +11,9 @@ import sys
 from pathlib import Path
 from typing import List
 
-from config.settings import Settings
-from src.exceptions import AnalysisError, GitHubAPIError
-from src.project_searcher import ProjectSearcher
+from .settings import Settings
+from .exceptions import AnalysisError, GitHubAPIError
+from .project_searcher import ProjectSearcher
 
 
 def create_argument_parser() -> argparse.ArgumentParser:
@@ -23,14 +24,13 @@ def create_argument_parser() -> argparse.ArgumentParser:
         Argument parser
     """
     parser = argparse.ArgumentParser(
-        description="PHPIncludes - PHP Project Dynamic Include/Require Detection Tool",
+        description="PHPIncludes - PHP Project Dataset Collection Tool for collecting projects that meet specific criteria",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Example usage:
-  python main.py --token YOUR_GITHUB_TOKEN
-  python main.py --token YOUR_GITHUB_TOKEN --queries "call_user_func" "include $_GET"
-  python main.py --token YOUR_GITHUB_TOKEN --max-projects 50 --no-export
-  python main.py --token YOUR_GITHUB_TOKEN --include-unqualified
+  uv run php-includes --token YOUR_GITHUB_TOKEN
+  uv run php-includes --token YOUR_GITHUB_TOKEN --max-projects 50 --no-export
+  uv run php-includes --token YOUR_GITHUB_TOKEN --include-unqualified
         """,
     )
 
@@ -38,28 +38,15 @@ Example usage:
     parser.add_argument(
         "--token",
         type=str,
-        help="GitHub API access token (or set GITHUB_TOKEN environment variable)",
+        help="GitHub API access token (default: from config.yml)",
     )
 
     # Optional parameters
     parser.add_argument(
-        "--queries",
-        nargs="+",
-        help="Search query list (default uses predefined queries)",
-    )
-
-    parser.add_argument(
         "--max-projects",
         type=int,
-        default=Settings.DEFAULT_MAX_PROJECTS,
-        help=f"Maximum number of projects (default: {Settings.DEFAULT_MAX_PROJECTS})",
-    )
-
-    parser.add_argument(
-        "--language",
-        type=str,
-        default=Settings.DEFAULT_LANGUAGE,
-        help=f"Programming language filter (default: {Settings.DEFAULT_LANGUAGE})",
+        default=None,
+        help="Maximum number of projects (default: from config.yml)",
     )
 
     parser.add_argument(
@@ -77,15 +64,15 @@ Example usage:
     parser.add_argument(
         "--output-dir",
         type=str,
-        default=Settings.OUTPUT_DIR,
-        help=f"Output directory (default: {Settings.OUTPUT_DIR})",
+        default=None,
+        help="Output directory (default: from config.yml)",
     )
 
     parser.add_argument(
         "--cache-dir",
         type=str,
-        default=Settings.CACHE_DB_PATH,
-        help=f"Cache directory (default: {Settings.CACHE_DB_PATH})",
+        default=None,
+        help="Cache directory (default: from config.yml)",
     )
 
     parser.add_argument(
@@ -93,6 +80,12 @@ Example usage:
         "-v",
         action="store_true",
         help="Verbose output",
+    )
+
+    parser.add_argument(
+        "--debug",
+        action="store_true",
+        help="Show detailed error information (including tracebacks)",
     )
 
     parser.add_argument(
@@ -114,32 +107,38 @@ def validate_arguments(args: argparse.Namespace) -> None:
     Raises:
         ValueError: Argument validation failed
     """
-    if args.max_projects <= 0:
+    # Get values from config if not provided via command line
+    max_projects = args.max_projects or Settings.get_max_projects()
+    output_dir = args.output_dir or Settings.get_output_dir()
+    cache_dir = args.cache_dir or Settings.get_cache_db_path()
+
+    # Validate max_projects
+    if max_projects <= 0:
         raise ValueError("max-projects must be greater than 0")
 
-    if args.max_projects > 1000:
+    if max_projects > 1000:
         print("⚠️ Warning: max-projects over 1000 may cause API rate limit issues")
 
-    if args.max_projects > 5000:
+    if max_projects > 5000:
         print(
             "⚠️ Warning: max-projects over 5000 may take a very long time and hit API limits"
         )
 
     # Validate output directory
-    output_path = Path(args.output_dir)
+    output_path = Path(output_dir)
     try:
         output_path.mkdir(parents=True, exist_ok=True)
     except Exception as e:
         raise ValueError(
-            f"Cannot create output directory {args.output_dir}: {e}"
+            f"Cannot create output directory {output_dir}: {e}"
         ) from e
 
     # Validate cache directory
-    cache_path = Path(args.cache_dir)
+    cache_path = Path(cache_dir)
     try:
         cache_path.parent.mkdir(parents=True, exist_ok=True)
     except Exception as e:
-        raise ValueError(f"Cannot create cache directory {args.cache_dir}: {e}") from e
+        raise ValueError(f"Cannot create cache directory {cache_dir}: {e}") from e
 
 
 def get_github_token(args: argparse.Namespace) -> str:
@@ -163,7 +162,7 @@ def get_github_token(args: argparse.Namespace) -> str:
     except ValueError as e:
         raise ValueError(
             f"{e}\n"
-            f"Please use --token parameter or set {Settings.GITHUB_API_TOKEN_ENV} environment variable"
+            f"Please use --token parameter or set github.api_token in config.yml"
         ) from e
 
 
@@ -184,24 +183,14 @@ def print_config_summary(args: argparse.Namespace) -> None:
         args: Command-line arguments
     """
     print("\n📋 Configuration Summary:")
-    print(f"  • Maximum projects: {args.max_projects}")
-    print(f"  • Language filter: {args.language}")
-    print(f"  • Output directory: {args.output_dir}")
-    print(f"  • Cache directory: {args.cache_dir}")
+    max_projects = args.max_projects or Settings.get_max_projects()
+    output_dir = args.output_dir or Settings.get_output_dir()
+    cache_dir = args.cache_dir or Settings.get_cache_db_path()
+    print(f"  • Maximum projects: {max_projects}")
+    print(f"  • Output directory: {output_dir}")
+    print(f"  • Cache directory: {cache_dir}")
     print(f"  • Export CSV: {'No' if args.no_export else 'Yes'}")
     print(f"  • Include unqualified: {'Yes' if args.include_unqualified else 'No'}")
-
-
-def print_search_queries(queries: List[str]) -> None:
-    """
-    Print search queries
-
-    Args:
-        queries: Search query list
-    """
-    print(f"\n🔍 Search Queries ({len(queries)}):")
-    for i, query in enumerate(queries, 1):
-        print(f"  {i}. {query}")
 
 
 def main() -> int:
@@ -211,11 +200,19 @@ def main() -> int:
     Returns:
         Exit code
     """
+    # Parse command-line arguments first (before any operations)
+    parser = create_argument_parser()
     try:
-        # Parse command-line arguments
-        parser = create_argument_parser()
         args = parser.parse_args()
+        debug_mode = args.debug
+    except SystemExit:
+        # argparse exits on --help or --version
+        return 0
+    except Exception:
+        # If argument parsing fails, we can't use debug flag
+        debug_mode = False
 
+    try:
         # Print banner
         print_banner()
 
@@ -225,12 +222,8 @@ def main() -> int:
         # Get GitHub token
         github_token = get_github_token(args)
 
-        # Get search queries with language filtering
-        search_queries = Settings.get_search_queries(args.queries, args.language)
-
         # Print configuration summary
         print_config_summary(args)
-        print_search_queries(search_queries)
 
         # Create project searcher
         print("\n🚀 Initializing project searcher...")
@@ -240,8 +233,7 @@ def main() -> int:
             # Execute search
             print("\n🔍 Starting project search and analysis...")
             searcher.search_projects(
-                search_queries=search_queries,
-                max_projects=args.max_projects,
+                max_projects=args.max_projects,  # None means use config.yml
                 export_csv=not args.no_export,
                 include_unqualified=args.include_unqualified,
             )
@@ -270,31 +262,51 @@ def main() -> int:
         return 130
 
     except ValueError as e:
-        print(f"\n❌ Parameter error: {e}")
+        if debug_mode:
+            print(f"\n❌ Parameter error: {e}")
+            import traceback
+            traceback.print_exc()
+        else:
+            print(f"\n❌ Parameter error: {e}")
         return 1
 
     except GitHubAPIError as e:
-        print(f"\n❌ GitHub API error: {e}")
-        if args.verbose:
-            print(f"   Status code: {e.status_code}")
-            print(f"   Response data: {e.response_data}")
+        if debug_mode:
+            print(f"\n❌ GitHub API error: {e}")
+            if hasattr(e, 'status_code'):
+                print(f"   Status code: {e.status_code}")
+            if hasattr(e, 'response_data'):
+                print(f"   Response data: {e.response_data}")
+            import traceback
+            traceback.print_exc()
+        else:
+            print(f"\n❌ GitHub API error occurred")
+            print("   Use --debug for detailed error information")
         return 2
 
     except AnalysisError as e:
-        print(f"\n❌ Analysis error: {e}")
-        if args.verbose:
-            print(f"   File path: {e.file_path}")
-            print(f"   Line number: {e.line_number}")
+        if debug_mode:
+            print(f"\n❌ Analysis error: {e}")
+            if hasattr(e, 'file_path'):
+                print(f"   File path: {e.file_path}")
+            if hasattr(e, 'line_number'):
+                print(f"   Line number: {e.line_number}")
+            import traceback
+            traceback.print_exc()
+        else:
+            print(f"\n❌ Analysis error occurred")
+            print("   Use --debug for detailed error information")
         return 3
 
     except Exception as e:
-        print(f"\n❌ Unexpected error: {e}")
-        if args.verbose:
+        if debug_mode:
+            print(f"\n❌ Unexpected error: {e}")
             import traceback
-
             traceback.print_exc()
+        else:
+            print(f"\n❌ An unexpected error occurred")
+            print(f"   Error type: {type(e).__name__}")
+            print("   Use --debug for detailed error information")
         return 4
 
 
-if __name__ == "__main__":
-    sys.exit(main())

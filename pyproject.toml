@@ -1,17 +1,16 @@
 [project]
 name = "php-includes"
 version = "1.0.0"
-description = "PHP项目筛选系统 - 从GitHub搜索和分析具有特定安全风险特征的PHP项目"
+description = "PHP Project Dataset Collection Tool - Collects PHP projects from GitHub that meet specific criteria"
 authors = [
     {name = "PHPIncludes Team", email = "team@phpincludes.dev"}
 ]
 readme = "README.md"
-license = {text = "MIT"}
+license = "MIT"
 requires-python = ">=3.9"
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.8",
     "Programming Language :: Python :: 3.9",
@@ -43,7 +42,14 @@ redis = [
 ]
 
 [project.scripts]
-php-includes = "main:main"
+php-includes = "phpincludes.cli:main"
+
+[tool.uv]
+package = true
+
+[tool.setuptools]
+packages = ["phpincludes"]
+include-package-data = false
 
 [tool.black]
 line-length = 88
@@ -109,14 +115,14 @@ python_functions = ["test_*"]
 addopts = [
     "--strict-markers",
     "--strict-config",
-    "--cov=src",
+    "--cov=phpincludes",
     "--cov-report=term-missing",
     "--cov-report=html",
     "--cov-report=xml",
 ]
 
 [tool.coverage.run]
-source = ["src"]
+source = ["phpincludes"]
 omit = [
     "*/tests/*",
     "*/test_*",

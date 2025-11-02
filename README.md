@@ -1,16 +1,17 @@
-# PHP Project Filtering System
+# PHP Project Dataset Collection Tool
 
-An automated tool for searching and analyzing PHP projects on GitHub with specific security risk characteristics.
+An automated tool for collecting PHP projects from GitHub that meet specific criteria. The goal is to obtain accurate datasets for further analysis.
 
 ## Features
 
-- **SuperGlobal Detection**: Detects whether projects use SuperGlobal parameters ($_GET, $_POST, etc.)
+- **Dataset Collection**: Collects PHP projects from GitHub that meet specific criteria
+- **SuperGlobal Requirement**: Projects must use SuperGlobal parameters ($_GET, $_POST, etc.)
 - **Dynamic Function Detection**: Identifies dynamic function calls like call_user_func, call_user_func_array
 - **Dynamic Include Detection**: Uses Semgrep to detect dynamic file inclusion statements
-- **Strict Filtering Logic**: Multi-layer filtering ensures result quality
+- **Strict Filtering Logic**: Multi-layer filtering ensures dataset quality
 - **Language Filtering**: Automatically filters by PHP language using GitHub's `language:PHP` qualifier
 - **Smart Project Limits**: Configurable project limits (default: 1000) to manage API usage
-- **CSV Export**: Generates structured analysis reports
+- **CSV Export**: Generates structured dataset reports
 
 ## System Requirements
 
@@ -48,10 +49,10 @@ uv sync --extra dev
 
 1. Create configuration file from example:
 ```bash
-cp config/config.yml.example config/config.yml
+cp config.yml.example config.yml
 ```
 
-2. Edit `config/config.yml` and set your GitHub API token:
+2. Edit `config.yml` and set your GitHub API token:
 ```yaml
 github:
   api_token: "your_github_token_here"
@@ -91,27 +92,28 @@ export GITHUB_TOKEN=your_token_here
 
 ## Usage
 
-Run the project using uv:
+Run the project using the defined entry point:
 ```bash
-uv run python main.py --token your_github_token --max-projects 1000 --language PHP
+# Using the entry point defined in pyproject.toml (recommended)
+uv run php-includes --token your_github_token --max-projects 1000
 ```
 
 Or activate the virtual environment and run:
 ```bash
 uv shell
-python main.py --token your_github_token --max-projects 1000 --language PHP
+php-includes --token your_github_token --max-projects 1000
 ```
 
 ### Advanced Usage
 
-Search with custom queries and language filtering:
+Search with custom settings:
 ```bash
-python main.py --token YOUR_TOKEN --queries "call_user_func" "include $_GET" --language PHP --max-projects 500
+uv run php-includes --token YOUR_TOKEN --max-projects 500 --verbose
 ```
 
-Search with different language variants:
+Include unqualified projects in output:
 ```bash
-python main.py --token YOUR_TOKEN --language php --max-projects 2000
+uv run php-includes --token YOUR_TOKEN --max-projects 2000 --include-unqualified
 ```
 
 ## Project Limits and Filtering Strategy
@@ -149,8 +151,8 @@ The project uses the GitHub REST API v3 to search for PHP repositories, analyze 
 
 All API requests use personal access tokens for authentication:
 - **Header**: `Authorization: token <GITHUB_TOKEN>`
-- **Environment Variable**: `GITHUB_TOKEN`
-- **Configuration File**: `config/config.yml` → `github.api_token`
+- **CLI Parameter**: `--token <TOKEN>` (highest priority)
+- **Configuration File**: `config.yml` → `github.api_token` (fallback)
 
 ### API Endpoints Used
 
@@ -283,8 +285,9 @@ The system includes automatic error handling with retry logic.
 
 ```
 PHPIncludes/
-├── src/                    # Core source code
-├── config/                 # Configuration files
+├── phpincludes/            # Core source code package
+├── config.yml              # Configuration file (git-ignored)
+├── config.yml.example      # Configuration template
 ├── tests/                  # Test cases
 ├── scripts/                # Script files
 ├── docs/                   # Documentation
@@ -308,13 +311,13 @@ uv run pytest
 
 Code formatting:
 ```bash
-uv run black src/ tests/
-uv run ruff check src/ tests/
+uv run black phpincludes/ tests/
+uv run ruff check phpincludes/ tests/
 ```
 
 Type checking:
 ```bash
-uv run mypy src/
+uv run mypy phpincludes/
 ```
 
 Install new dependencies:

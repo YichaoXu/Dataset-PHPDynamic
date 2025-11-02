@@ -1,7 +1,8 @@
 """
-GitHub API客户端
+GitHub API Client
 
-本模块管理与GitHub API的交互，搜索PHP项目，遵循GitHub API最佳实践。
+This module manages interactions with the GitHub API, searches for PHP projects,
+and follows GitHub API best practices.
 """
 
 from typing import Any, Dict, List, Optional
@@ -15,7 +16,7 @@ from .rate_limit_handler import RateLimitHandler
 
 
 class GitHubAPIClient:
-    """管理与GitHub API的交互，搜索PHP项目"""
+    """Manages interactions with the GitHub API and searches for PHP projects"""
 
     BASE_URL = "https://api.github.com"
 
@@ -26,15 +27,15 @@ class GitHubAPIClient:
         rate_limit_handler: RateLimitHandler,
     ) -> None:
         """
-        初始化GitHub API客户端
+        Initialize GitHub API client
 
         Args:
-            api_token: GitHub API访问令牌
-            cache_manager: 缓存管理器
-            rate_limit_handler: 速率限制处理器
+            api_token: GitHub API access token
+            cache_manager: Cache manager
+            rate_limit_handler: Rate limit handler
 
         Raises:
-            GitHubAPIError: 令牌无效
+            GitHubAPIError: Invalid token
         """
         if not api_token:
             raise GitHubAPIError("GitHub API token is required")
@@ -43,7 +44,7 @@ class GitHubAPIClient:
         self.cache_manager = cache_manager
         self.rate_limit_handler = rate_limit_handler
 
-        # 创建HTTP会话
+        # Create HTTP session
         self.session = requests.Session()
         self.session.headers.update(
             {
@@ -57,25 +58,25 @@ class GitHubAPIClient:
         self, query: str, language: str = "PHP", per_page: int = 100
     ) -> List[Dict[str, Any]]:
         """
-        使用GitHub Code Search API搜索包含特定代码的仓库
+        Search for repositories containing specific code using GitHub Code Search API
 
         Args:
-            query: 搜索查询字符串
-            language: 编程语言
-            per_page: 每页结果数量
+            query: Search query string
+            language: Programming language
+            per_page: Number of results per page
 
         Returns:
-            代码搜索结果列表
+            List of code search results
 
         Raises:
-            GitHubAPIError: API请求失败
+            GitHubAPIError: API request failed
         """
         search_query = f"{query} language:{language}"
         url = urljoin(self.BASE_URL, "/search/code")
 
         params: Dict[str, Any] = {
             "q": search_query,
-            "per_page": min(per_page, 100),  # GitHub限制最大100
+            "per_page": min(per_page, 100),  # GitHub maximum limit is 100
             "sort": "indexed",
             "order": "desc",
         }
@@ -89,7 +90,7 @@ class GitHubAPIClient:
 
         cache_key = self.cache_manager.generate_cache_key(url, params)
 
-        # 尝试从缓存获取
+        # Try to get from cache
         cached_result = self.cache_manager.get(cache_key)
         if cached_result:
             print(f"  ✅ Cache hit: Found {len(cached_result)} cached results")
@@ -98,7 +99,7 @@ class GitHubAPIClient:
         print("  🔄 Cache miss: Making API request...")
 
         try:
-            # 等待速率限制
+            # Wait for rate limit
             self.rate_limit_handler.wait_if_needed()
             rate_status = self.rate_limit_handler.get_status()
             print(
@@ -107,7 +108,7 @@ class GitHubAPIClient:
 
             response = self.session.get(url, params=params, timeout=30)
 
-            # 检查速率限制
+            # Check rate limit
             self.rate_limit_handler.update_from_response(response)
             rate_status = self.rate_limit_handler.get_status()
             print(
@@ -127,14 +128,14 @@ class GitHubAPIClient:
                 print(f"     Results returned: {len(results)}")
                 print(f"     Incomplete results: {incomplete_results}")
 
-                # 统计结果类型
+                # Count result types
                 repos = set()
                 for item in results:
                     repo = item.get("repository", {}).get("full_name", "unknown")
                     repos.add(repo)
                 print(f"     Unique repositories: {len(repos)}")
 
-                # 缓存结果（1小时）
+                # Cache results (1 hour)
                 self.cache_manager.set(cache_key, results, expire_after=3600)
                 print("  💾 Results cached for 1 hour")
 
@@ -157,57 +158,57 @@ class GitHubAPIClient:
             raise GitHubAPIError(f"Network error during GitHub API request: {e}") from e
         except RateLimitError:
             print("  ⚠️  Rate limit exceeded")
-            raise  # 重新抛出速率限制错误
+            raise  # Re-raise rate limit error
 
     def search_code_in_repository(
         self, owner: str, repo: str, query: str, language: str = "PHP"
     ) -> List[Dict[str, Any]]:
         """
-        在特定仓库内搜索代码内容
+        Search code content within a specific repository
 
         Args:
-            owner: 仓库所有者
-            repo: 仓库名
-            query: 搜索查询字符串
-            language: 编程语言
+            owner: Repository owner
+            repo: Repository name
+            query: Search query string
+            language: Programming language
 
         Returns:
-            代码搜索结果列表
+            List of code search results
 
         Raises:
-            GitHubAPIError: API请求失败
+            GitHubAPIError: API request failed
         """
         search_query = f"{query} language:{language} repo:{owner}/{repo}"
         url = urljoin(self.BASE_URL, "/search/code")
 
         params: Dict[str, Any] = {
             "q": search_query,
-            "per_page": 100,  # GitHub限制最大100
+            "per_page": 100,  # GitHub maximum limit is 100
             "sort": "indexed",
             "order": "desc",
         }
 
         cache_key = self.cache_manager.generate_cache_key(url, params)
 
-        # 尝试从缓存获取
+        # Try to get from cache
         cached_result = self.cache_manager.get(cache_key)
         if cached_result:
             return cached_result
 
         try:
-            # 等待速率限制
+            # Wait for rate limit
             self.rate_limit_handler.wait_if_needed()
 
             response = self.session.get(url, params=params, timeout=30)
 
-            # 检查速率限制
+            # Check rate limit
             self.rate_limit_handler.update_from_response(response)
 
             if response.status_code == 200:
                 data = response.json()
                 results = data.get("items", [])
 
-                # 缓存结果（1小时）
+                # Cache results (1 hour)
                 self.cache_manager.set(cache_key, results, expire_after=3600)
 
                 return results
@@ -221,54 +222,56 @@ class GitHubAPIClient:
         except requests.RequestException as e:
             raise GitHubAPIError(f"Network error during GitHub API request: {e}") from e
         except RateLimitError:
-            raise  # 重新抛出速率限制错误
+            raise  # Re-raise rate limit error
 
     def search_repositories_optimized(
-        self, query: str, per_page: int = 100
+        self, query: str, per_page: int = 100, page: int = 1
     ) -> List[Dict[str, Any]]:
         """
-        优化的仓库搜索，使用Repository Search API
+        Optimized repository search using Repository Search API
 
         Args:
-            query: 搜索查询
-            per_page: 每页结果数量
+            query: Search query
+            per_page: Number of results per page
+            page: Page number (starting from 1)
 
         Returns:
-            仓库搜索结果列表
+            repositorySearch result list
 
         Raises:
-            GitHubAPIError: API请求失败
+            GitHubAPIError: API request failed
         """
         url = urljoin(self.BASE_URL, "/search/repositories")
 
         params: Dict[str, Any] = {
             "q": query,
-            "per_page": min(per_page, 100),  # GitHub限制最大100
+            "per_page": min(per_page, 100),  # GitHub maximum limit is 100
+            "page": page,
             "sort": "stars",
             "order": "desc",
         }
 
         cache_key = self.cache_manager.generate_cache_key(url, params)
 
-        # 尝试从缓存获取
+        # Try to get from cache
         cached_result = self.cache_manager.get(cache_key)
         if cached_result:
             return cached_result
 
         try:
-            # 等待速率限制
+            # Wait for rate limit
             self.rate_limit_handler.wait_if_needed()
 
             response = self.session.get(url, params=params, timeout=30)
 
-            # 检查速率限制
+            # Check rate limit
             self.rate_limit_handler.update_from_response(response)
 
             if response.status_code == 200:
                 data = response.json()
                 results = data.get("items", [])
 
-                # 缓存结果（2小时，仓库信息变化较少）
+                # Cache results (2 hours, repository info changes less)
                 self.cache_manager.set(cache_key, results, expire_after=7200)
 
                 return results
@@ -282,27 +285,27 @@ class GitHubAPIClient:
         except requests.RequestException as e:
             raise GitHubAPIError(f"Network error during GitHub API request: {e}") from e
         except RateLimitError:
-            raise  # 重新抛出速率限制错误
+            raise  # Re-raise rate limit error
 
     def get_repository_contents(self, owner: str, repo: str) -> List[Dict[str, Any]]:
         """
-        获取仓库的文件内容列表
+        Get repository file content list
 
         Args:
-            owner: 仓库所有者
-            repo: 仓库名
+            owner: Repository owner
+            repo: Repository name
 
         Returns:
-            文件内容信息列表
+            File content information list
 
         Raises:
-            GitHubAPIError: API请求失败
+            GitHubAPIError: API request failed
         """
         url = urljoin(self.BASE_URL, f"/repos/{owner}/{repo}/contents")
         print(f"        📡 Repository Contents API: {url}")
         cache_key = self.cache_manager.generate_cache_key(url)
 
-        # 尝试从缓存获取
+        # Try to get from cache
         cached_result = self.cache_manager.get(cache_key)
         if cached_result:
             print(f"        ✅ Cache hit: Found {len(cached_result)} items")
@@ -322,7 +325,7 @@ class GitHubAPIClient:
                 contents = response.json()
                 print(f"        ✅ Success: Retrieved {len(contents)} items")
 
-                # 缓存结果（30分钟）
+                # Cache results (30 minutes)
                 self.cache_manager.set(cache_key, contents, expire_after=1800)
                 print("        💾 Results cached for 30 minutes")
 
@@ -344,24 +347,24 @@ class GitHubAPIClient:
 
     def get_file_content(self, owner: str, repo: str, file_path: str) -> str:
         """
-        获取指定文件的内容
+        Get content of specified file
 
         Args:
-            owner: 仓库所有者
-            repo: 仓库名
-            file_path: 文件路径
+            owner: Repository owner
+            repo: Repository name
+            file_path: File path
 
         Returns:
-            文件内容字符串
+            File contentstring
 
         Raises:
-            GitHubAPIError: 文件未找到或API请求失败
+            GitHubAPIError: File not found or API request failed
         """
         url = urljoin(self.BASE_URL, f"/repos/{owner}/{repo}/contents/{file_path}")
         print(f"            📡 File Content API: {file_path}")
         cache_key = self.cache_manager.generate_cache_key(url)
 
-        # 尝试从缓存获取
+        # Try to get from cache
         cached_result = self.cache_manager.get(cache_key)
         if cached_result:
             print(
@@ -382,13 +385,13 @@ class GitHubAPIClient:
             if response.status_code == 200:
                 file_data = response.json()
 
-                # GitHub API返回base64编码的内容
+                # GitHub API returns base64-encoded content
                 import base64
 
                 content = base64.b64decode(file_data["content"]).decode("utf-8")
                 print(f"            ✅ Success: Retrieved file ({len(content)} chars)")
 
-                # 缓存结果（30分钟）
+                # Cache results (30 minutes)
                 self.cache_manager.set(cache_key, content, expire_after=1800)
                 print("            💾 File cached for 30 minutes")
 
@@ -411,22 +414,22 @@ class GitHubAPIClient:
 
     def get_repository_info(self, owner: str, repo: str) -> Dict[str, Any]:
         """
-        获取仓库基本信息
+        Get basic repository information
 
         Args:
-            owner: 仓库所有者
-            repo: 仓库名
+            owner: Repository owner
+            repo: Repository name
 
         Returns:
-            仓库信息字典
+            Repository information dictionary
 
         Raises:
-            GitHubAPIError: API请求失败
+            GitHubAPIError: API request failed
         """
         url = urljoin(self.BASE_URL, f"/repos/{owner}/{repo}")
         cache_key = self.cache_manager.generate_cache_key(url)
 
-        # 尝试从缓存获取
+        # Try to get from cache
         cached_result = self.cache_manager.get(cache_key)
         if cached_result:
             return cached_result
@@ -440,7 +443,7 @@ class GitHubAPIClient:
             if response.status_code == 200:
                 repo_info = response.json()
 
-                # 缓存结果（1小时）
+                # Cache results (1 hour)
                 self.cache_manager.set(cache_key, repo_info, expire_after=3600)
 
                 return repo_info
@@ -454,22 +457,74 @@ class GitHubAPIClient:
         except requests.RequestException as e:
             raise GitHubAPIError(f"Network error getting repository info: {e}") from e
 
+    def get_branch_commit_sha(self, owner: str, repo: str, branch: str = "main") -> str:
+        """
+        Get指定分支的最新commit SHA
+
+        Args:
+            owner: Repository owner
+            repo: Repository name
+            branch: Branch name (default: main)
+
+        Returns:
+            Commit SHAstring（IfGetfailed，Returns分支名作为fallback）
+        """
+        # Use /repos/{owner}/{repo}/commits/{branch} to get latest commit
+        # Note: This endpoint returns a single commit object, not a list
+        url = urljoin(self.BASE_URL, f"/repos/{owner}/{repo}/commits/{branch}")
+        cache_key = self.cache_manager.generate_cache_key(url)
+
+        # Try to get from cache
+        cached_result = self.cache_manager.get(cache_key)
+        if cached_result:
+            if isinstance(cached_result, dict):
+                return cached_result.get("sha", branch)
+            elif isinstance(cached_result, str):
+                return cached_result
+            return branch
+
+        try:
+            self.rate_limit_handler.wait_if_needed()
+
+            response = self.session.get(url, timeout=30)
+            self.rate_limit_handler.update_from_response(response)
+
+            if response.status_code == 200:
+                commit_data = response.json()
+                # API returns a single commit object containing sha field
+                commit_sha = commit_data.get("sha", branch)
+
+                # Cache results (30 minutes)
+                self.cache_manager.set(cache_key, commit_data, expire_after=1800)
+
+                return commit_sha
+            elif response.status_code == 404:
+                # Branch does not exist, return branch name as fallback
+                return branch
+            else:
+                # Other error, return branch name as fallback
+                return branch
+
+        except requests.RequestException:
+            # If request fails, return branch name as fallback
+            return branch
+
     def make_authenticated_request(
         self, url: str, params: Optional[Dict[str, Any]] = None
     ) -> requests.Response:
         """
-        发起经过身份验证的API请求
+        Make authenticated API request
 
         Args:
             url: API URL
-            params: 查询参数
+            params: 查询parameter
 
         Returns:
-            HTTP响应对象
+            HTTP response object
 
         Raises:
-            RateLimitError: 速率限制被触发
-            GitHubAPIError: 请求失败
+            RateLimitError: Rate limit triggered
+            GitHubAPIError: Request failed
         """
         try:
             self.rate_limit_handler.wait_if_needed()
@@ -486,13 +541,13 @@ class GitHubAPIClient:
 
     def get_rate_limit_status(self) -> Dict[str, Any]:
         """
-        获取当前速率限制状态
+        Get当前速率限制状态
 
         Returns:
-            速率限制状态信息
+            Rate limit status information
         """
         return self.rate_limit_handler.get_status()
 
     def close(self) -> None:
-        """关闭HTTP会话"""
+        """Close HTTP session"""
         self.session.close()
