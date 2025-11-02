@@ -481,13 +481,13 @@ class PHPAnalyzer:
         self, results: Dict[str, Dict[str, Any]]
     ) -> Dict[str, Any]:
         """
-        GetAnalyzeCount信息
+        Get analysis statistics
 
         Args:
             results: Analysis result dictionary
 
         Returns:
-            Count信息
+            Statistics
         """
         total_files = len(results)
         accepted_files = 0

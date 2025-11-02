@@ -162,7 +162,7 @@ class CSVExporter:
         Format result row as CSV row
 
         Args:
-            result: Search forresult
+            result: Search result
 
         Returns:
             Formatted CSV row data (simplified through SearchResult.to_csv_row())
@@ -171,13 +171,13 @@ class CSVExporter:
 
     def _format_priority(self, priority: int) -> str:
         """
-        格式化优先级
+        Format priority
 
         Args:
-            priority: 优先级数字
+            priority: Priority number
 
         Returns:
-            格式化的优先级string
+            Formatted priority string
         """
         priority_map = {
             0: "Rejected",
@@ -344,13 +344,13 @@ class CSVExporter:
 
     def get_export_statistics(self, results: List[SearchResult]) -> Dict[str, Any]:
         """
-        GetExportCount信息
+        Get export statistics
 
         Args:
             results: Search result list
 
         Returns:
-            Count信息字典
+            Statistics dictionary
         """
         total_count = len(results)
         qualified_count = sum(1 for r in results if r.is_qualified)

@@ -459,7 +459,7 @@ class GitHubAPIClient:
 
     def get_branch_commit_sha(self, owner: str, repo: str, branch: str = "main") -> str:
         """
-        Get指定分支的最新commit SHA
+        Get latest commit SHA for specified branch
 
         Args:
             owner: Repository owner
@@ -467,7 +467,7 @@ class GitHubAPIClient:
             branch: Branch name (default: main)
 
         Returns:
-            Commit SHAstring（IfGetfailed，Returns分支名作为fallback）
+            Commit SHA string (returns branch name as fallback if get failed)
         """
         # Use /repos/{owner}/{repo}/commits/{branch} to get latest commit
         # Note: This endpoint returns a single commit object, not a list
@@ -541,7 +541,7 @@ class GitHubAPIClient:
 
     def get_rate_limit_status(self) -> Dict[str, Any]:
         """
-        Get当前速率限制状态
+        Get current rate limit status
 
         Returns:
             Rate limit status information
