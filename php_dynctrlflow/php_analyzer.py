@@ -237,9 +237,10 @@ class PHPAnalyzer:
                 "usage": usage,
             }
 
-        except Exception:
-            # If Semgrep failed, use regex fallback
-            return self._fallback_variable_function_detection(content)
+        except Exception as e:
+            # If Semgrep failed, raise error instead of using fallback
+            from .exceptions import AnalysisError
+            raise AnalysisError(f"Semgrep variable function detection failed: {e}") from e
 
     def _fallback_variable_function_detection(self, content: str) -> Dict[str, Any]:
         """
@@ -320,11 +321,11 @@ class PHPAnalyzer:
                             "message": result.get("message", ""),
                             "severity": result.get("severity", ""),
                             "code_snippet": result.get("code_snippet", ""),
-                            "context": self._get_context_by_line(
+                        "context": self._get_context_by_line(
                                 content, result.get("line_number", 0)
-                            ),
-                        }
-                    )
+                        ),
+                    }
+                )
 
             return {
                 "found": len(usage) > 0,
@@ -332,9 +333,10 @@ class PHPAnalyzer:
                 "semgrep_results": semgrep_results,
             }
 
-        except Exception:
-            # If Semgrep failed, use regex fallback
-            return self._fallback_include_detection(content)
+        except Exception as e:
+            # If Semgrep failed, raise error instead of using fallback
+            from .exceptions import AnalysisError
+            raise AnalysisError(f"Semgrep include detection failed: {e}") from e
 
     def _fallback_include_detection(self, content: str) -> Dict[str, Any]:
         """

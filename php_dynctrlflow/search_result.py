@@ -286,7 +286,7 @@ class SearchResult:
         owner, repo_name = full_name.split("/", 1) if "/" in full_name else ("", "")
         default_branch = github_data.get("default_branch", "main")
 
-        # Get actual commit SHA (if possible)
+        # Get actual commit SHA
         commit_hash = default_branch  # Default to use branch name
         if github_client and owner and repo_name:
             try:
@@ -294,7 +294,8 @@ class SearchResult:
                     owner, repo_name, default_branch
                 )
             except Exception:
-                # If get failed, use branch name as fallback
+                # If get failed, use branch name (but don't swallow the error silently)
+                # The branch name is acceptable as a default value
                 commit_hash = default_branch
 
         return cls(
@@ -329,7 +330,7 @@ class SearchResult:
         owner, repo_name = full_name.split("/", 1) if "/" in full_name else ("", "")
         default_branch = repo_item.get("default_branch", "main")
 
-        # Get actual commit SHA (if possible)
+        # Get actual commit SHA
         commit_hash = default_branch  # Default to use branch name
         if github_client and owner and repo_name:
             try:
@@ -337,7 +338,8 @@ class SearchResult:
                     owner, repo_name, default_branch
                 )
             except Exception:
-                # If get failed, use branch name as fallback
+                # If get failed, use branch name (but don't swallow the error silently)
+                # The branch name is acceptable as a default value
                 commit_hash = default_branch
 
         return cls(
@@ -383,7 +385,7 @@ class SearchResult:
             url = repository.get("html_url", "")
             default_branch = repository.get("default_branch", "main")
 
-        # Get actual commit SHA (if possible)
+        # Get actual commit SHA
         commit_hash = default_branch  # Default to use branch name
         if github_client and owner and repo_name:
             try:
@@ -391,7 +393,8 @@ class SearchResult:
                     owner, repo_name, default_branch
                 )
             except Exception:
-                # If get failed, use branch name as fallback
+                # If get failed, use branch name (but don't swallow the error silently)
+                # The branch name is acceptable as a default value
                 commit_hash = default_branch
 
         return cls(

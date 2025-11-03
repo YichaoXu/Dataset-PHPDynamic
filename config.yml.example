@@ -21,7 +21,7 @@ search:
   
   # Maximum number of PHP files to analyze per project
   max_files_per_project: 10
-  
+
   # Batch size for streaming batch processing (number of repositories per batch)
   # Default: 100. Higher values use more memory but process faster.
   batch_size: 100

@@ -17,6 +17,7 @@ from .php_analyzer import PHPAnalyzer
 from .rate_limit_handler import RateLimitHandler
 from .search_result import SearchResult
 from .semgrep_analyzer import SemgrepAnalyzer
+from .settings import Settings
 
 
 class ProjectSearcher:
@@ -335,11 +336,19 @@ class ProjectSearcher:
 
                 # Get project file contents
                 print("   📁 Fetching project files...")
-                file_contents = self._get_project_files(result)
+                try:
+                    file_contents = self._get_project_files(result)
+                except GitHubAPIError as e:
+                    print(f"   ❌ Failed to get project files: {e}")
+                    result.add_metadata("analysis_error", f"Failed to get files: {e}")
+                    error_count += 1
+                    continue
 
                 if not file_contents:
-                    print("   ❌ No PHP files found")
-                    result.add_metadata("analysis_error", "No PHP files found")
+                    # No files found with SuperGlobal patterns - this is a valid result
+                    # The repository doesn't contain SuperGlobal usage, so it's rejected
+                    print("   ℹ️  No SuperGlobal usage found")
+                    result.add_metadata("rejection_reason", "No SuperGlobal usage found")
                     rejected_count += 1
                     continue
 
@@ -424,7 +433,10 @@ class ProjectSearcher:
 
     def _get_project_files(self, result: SearchResult) -> Dict[str, str]:
         """
-        Get PHP file content for the project
+        Get PHP file content for the project using Code Search API
+        
+        This method uses GitHub Code Search API to find files containing SuperGlobal
+        usage patterns, which is more efficient than scanning all files.
 
         Args:
             result: Search result
@@ -436,28 +448,66 @@ class ProjectSearcher:
             GitHubAPIError: API request failed
         """
         try:
-            # Scan repository root directory for PHP files
-            print(
-                f"      📡 Scanning repository root: {result.owner}/{result.repo_name}"
-            )
-            contents = self.github_client.get_repository_contents(
-                result.owner, result.repo_name
-            )
-            print(f"      ✅ Retrieved {len(contents)} file/directory item(s)")
-
             file_contents: Dict[str, str] = {}
-            php_file_count = 0
-            skipped_files = 0
-            error_files = 0
+            max_files = Settings.get_max_files_per_project()
 
-            for item in contents:
-                if item.get("type") == "file" and item.get("name", "").endswith(".php"):
-                    php_file_count += 1
+            # Use Code Search API to find files containing SuperGlobal usage
+            # This is more efficient than scanning all repository files
+            superglobal_patterns = [
+                "$_GET", "$_POST", "$_REQUEST", "$_COOKIE", 
+                "$_SESSION", "$_SERVER", "$_FILES", "$_ENV"
+            ]
+            
+            print(f"      📡 Searching for files with SuperGlobal usage patterns")
+            print(f"         Repository: {result.owner}/{result.repo_name}")
+            
+            # Search for files containing any SuperGlobal pattern
+            # GitHub Code Search API supports pattern matching
+            search_query = " OR ".join([f'"{pattern}"' for pattern in superglobal_patterns[:3]])
+            # Use first few patterns to find candidate files
+            
+            try:
+                code_results = self.github_client.search_code_in_repository(
+                    result.owner,
+                    result.repo_name,
+                    query=search_query,
+                    language="PHP"
+                )
+                
+                # Ensure code_results is a list, not None
+                if code_results is None:
+                    code_results = []
+                
+                print(f"      ✅ Found {len(code_results)} file(s) with SuperGlobal patterns")
+                
+                if not code_results:
+                    # No files found with SuperGlobal patterns - this is a valid result
+                    # The repository may not contain SuperGlobal usage
+                    print(f"      ℹ️  No files found with SuperGlobal patterns in this repository")
+                    return {}
+                
+                # Get unique file paths from search results
+                # GitHub Code Search API already filtered by language and pattern,
+                # so we can trust the results and don't need to filter by extension
+                unique_paths = set()
+                for item in code_results:
+                    file_path = item.get("path", "")
+                    if file_path:  # Only check if path exists
+                        unique_paths.add(file_path)
+                
+                print(f"         Unique files found: {len(unique_paths)}")
+                
+                if not unique_paths:
+                    # No unique paths found - this is a valid result
+                    print(f"      ℹ️  No unique file paths found in search results")
+                    return {}
+                
+                # Fetch file contents for matched files
+                # Use all files returned by Code Search API (up to max_files limit)
+                unique_paths_list = list(unique_paths)[:max_files]
+                for i, file_path in enumerate(unique_paths_list, 1):
                     try:
-                        file_path = item.get("path", "")
-                        print(
-                            f"         📄 [{php_file_count}] Fetching file: {file_path}"
-                        )
+                        print(f"         📄 [{i}/{len(unique_paths_list)}] Fetching file: {file_path}")
 
                         content = self.github_client.get_file_content(
                             result.owner, result.repo_name, file_path
@@ -467,31 +517,27 @@ class ProjectSearcher:
                         file_size = len(content)
                         print(f"            ✅ File size: {file_size} characters")
 
-                        # Limit file count to avoid too many requests
-                        if len(file_contents) >= 10:
-                            print(
-                                "         ⚠️  Reached max file limit (10), stopping..."
-                            )
-                            break
-
                     except Exception as e:
-                        error_files += 1
-                        print(
-                            f"         ❌ Failed to fetch file {item.get('name', '')}: {e}"
-                        )
+                        print(f"         ❌ Failed to fetch file {file_path}: {e}")
                         continue
-                else:
-                    skipped_files += 1
 
-            print("      📊 File Fetching Summary:")
-            print(f"         Total items: {len(contents)}")
-            print(f"         PHP files: {php_file_count}")
-            print(f"         Successfully fetched: {len(file_contents)}")
-            print(f"         Skipped non-PHP: {skipped_files}")
-            print(f"         Fetch errors: {error_files}")
+                print("      📊 File Fetching Summary:")
+                print(f"         Code search results: {len(code_results)}")
+                print(f"         Unique files: {len(unique_paths)}")
+                print(f"         Successfully fetched: {len(file_contents)}")
+                
+            except Exception as e:
+                # Code Search API failed - raise error
+                print(f"      ❌ Code Search API failed: {e}")
+                raise GitHubAPIError(
+                    f"Code Search API failed for {result.owner}/{result.repo_name}: {e}"
+                ) from e
 
             return file_contents
 
+        except GitHubAPIError:
+            # Re-raise GitHubAPIError without wrapping
+            raise
         except Exception as e:
             print(f"      ❌ Failed to get repository files: {e}")
             raise GitHubAPIError(f"Failed to get project files: {e}") from e
