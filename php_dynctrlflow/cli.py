@@ -14,11 +14,13 @@ from typing import List
 from .settings import Settings
 from .exceptions import AnalysisError, GitHubAPIError
 from .project_searcher import ProjectSearcher
+from .downloader import ProjectDownloader
+from .loc_counter import LOCCounter
 
 
 def create_argument_parser() -> argparse.ArgumentParser:
     """
-    Create command-line argument parser
+    Create command-line argument parser with subcommands
 
     Returns:
         Argument parser
@@ -30,56 +32,15 @@ def create_argument_parser() -> argparse.ArgumentParser:
 Example usage:
   uv run php-dynctrlflow --token YOUR_GITHUB_TOKEN
   uv run php-dynctrlflow --token YOUR_GITHUB_TOKEN --max-projects 50 --no-export
-  uv run php-dynctrlflow --token YOUR_GITHUB_TOKEN --include-unqualified
+  uv run php-dynctrlflow download path/to/projects.csv
         """,
     )
 
-    # Required parameters
+    # Global arguments
     parser.add_argument(
-        "--token",
-        type=str,
-        help="GitHub API access token (default: from config.yml)",
-    )
-
-    # Optional parameters
-    parser.add_argument(
-        "--max-projects",
-        type=int,
-        default=None,
-        help="Maximum number of projects (default: from config.yml)",
-    )
-
-    parser.add_argument(
-        "--no-export",
-        action="store_true",
-        help="Do not export CSV files",
-    )
-
-    parser.add_argument(
-        "--include-unqualified",
-        action="store_true",
-        help="Include unqualified projects in CSV",
-    )
-
-    parser.add_argument(
-        "--output-dir",
-        type=str,
-        default=None,
-        help="Output directory (default: from config.yml)",
-    )
-
-    parser.add_argument(
-        "--cache-dir",
-        type=str,
-        default=None,
-        help="Cache directory (default: from config.yml)",
-    )
-
-    parser.add_argument(
-        "--verbose",
-        "-v",
-        action="store_true",
-        help="Verbose output",
+        "--version",
+        action="version",
+        version=f"{Settings.PROJECT_NAME} {Settings.PROJECT_VERSION}",
     )
 
     parser.add_argument(
@@ -88,10 +49,97 @@ Example usage:
         help="Show detailed error information (including tracebacks)",
     )
 
+    # Search command arguments (for backward compatibility, keep in main parser)
     parser.add_argument(
-        "--version",
-        action="version",
-        version=f"{Settings.PROJECT_NAME} {Settings.PROJECT_VERSION}",
+        "--token",
+        type=str,
+        help="GitHub API access token (default: from config.yml)",
+    )
+    parser.add_argument(
+        "--max-projects",
+        type=int,
+        default=None,
+        help="Maximum number of projects (default: from config.yml)",
+    )
+    parser.add_argument(
+        "--no-export",
+        action="store_true",
+        help="Do not export CSV files",
+    )
+    parser.add_argument(
+        "--include-unqualified",
+        action="store_true",
+        help="Include unqualified projects in CSV",
+    )
+    parser.add_argument(
+        "--output-dir",
+        type=str,
+        default=None,
+        help="Output directory (default: from config.yml)",
+    )
+    parser.add_argument(
+        "--cache-dir",
+        type=str,
+        default=None,
+        help="Cache directory (default: from config.yml)",
+    )
+    parser.add_argument(
+        "--verbose",
+        "-v",
+        action="store_true",
+        help="Verbose output",
+    )
+
+    # Create subparsers for download command
+    subparsers = parser.add_subparsers(dest="command", help="Available commands", required=False)
+
+    # Download command
+    download_parser = subparsers.add_parser(
+        "download",
+        help="Download projects from CSV file",
+        description="Download GitHub repositories from CSV file using archive links",
+    )
+    download_parser.add_argument(
+        "csv_path",
+        type=str,
+        help="Path to CSV file containing project information",
+    )
+    download_parser.add_argument(
+        "--output-dir",
+        type=str,
+        default="data/repos",
+        help="Output directory for downloaded projects (default: data/repos)",
+    )
+    download_parser.add_argument(
+        "--verbose",
+        "-v",
+        action="store_true",
+        help="Verbose output",
+    )
+
+    # LOC command
+    loc_parser = subparsers.add_parser(
+        "loc",
+        help="Count lines of code in repositories",
+        description="Count lines of code (LOC) in repositories",
+    )
+    loc_parser.add_argument(
+        "--repos-dir",
+        type=str,
+        default="data/repos",
+        help="Directory containing repositories (default: data/repos)",
+    )
+    loc_parser.add_argument(
+        "--output-csv",
+        type=str,
+        default=None,
+        help="Path to output CSV file (optional)",
+    )
+    loc_parser.add_argument(
+        "--verbose",
+        "-v",
+        action="store_true",
+        help="Verbose output",
     )
 
     return parser
@@ -193,29 +241,18 @@ def print_config_summary(args: argparse.Namespace) -> None:
     print(f"  • Include unqualified: {'Yes' if args.include_unqualified else 'No'}")
 
 
-def main() -> int:
+def handle_search_command(args: argparse.Namespace, debug_mode: bool) -> int:
     """
-    Main function
+    Handle search command.
+
+    Args:
+        args: Parsed arguments
+        debug_mode: Enable debug mode
 
     Returns:
         Exit code
     """
-    # Parse command-line arguments first (before any operations)
-    parser = create_argument_parser()
     try:
-        args = parser.parse_args()
-        debug_mode = args.debug
-    except SystemExit:
-        # argparse exits on --help or --version
-        return 0
-    except Exception:
-        # If argument parsing fails, we can't use debug flag
-        debug_mode = False
-
-    try:
-        # Print banner
-        print_banner()
-
         # Validate arguments
         validate_arguments(args)
 
@@ -256,6 +293,208 @@ def main() -> int:
         finally:
             # Cleanup resources
             searcher.close()
+
+    except ValueError as e:
+        if debug_mode:
+            print(f"\n❌ Parameter error: {e}")
+            import traceback
+            traceback.print_exc()
+        else:
+            print(f"\n❌ Parameter error: {e}")
+        return 1
+
+    except GitHubAPIError as e:
+        if debug_mode:
+            print(f"\n❌ GitHub API error: {e}")
+            if hasattr(e, 'status_code'):
+                print(f"   Status code: {e.status_code}")
+            if hasattr(e, 'response_data'):
+                print(f"   Response data: {e.response_data}")
+            import traceback
+            traceback.print_exc()
+        else:
+            print(f"\n❌ GitHub API error occurred")
+            print("   Use --debug for detailed error information")
+        return 2
+
+    except AnalysisError as e:
+        if debug_mode:
+            print(f"\n❌ Analysis error: {e}")
+            if hasattr(e, 'file_path'):
+                print(f"   File path: {e.file_path}")
+            if hasattr(e, 'line_number'):
+                print(f"   Line number: {e.line_number}")
+            import traceback
+            traceback.print_exc()
+        else:
+            print(f"\n❌ Analysis error occurred")
+            print("   Use --debug for detailed error information")
+        return 3
+
+    except Exception as e:
+        if debug_mode:
+            print(f"\n❌ Unexpected error: {e}")
+            import traceback
+            traceback.print_exc()
+        else:
+            print(f"\n❌ An unexpected error occurred")
+            print(f"   Error type: {type(e).__name__}")
+            print("   Use --debug for detailed error information")
+        return 4
+
+
+def handle_loc_command(args: argparse.Namespace, debug_mode: bool) -> int:
+    """
+    Handle LOC counting command.
+
+    Args:
+        args: Parsed arguments
+        debug_mode: Enable debug mode
+
+    Returns:
+        Exit code
+    """
+    try:
+        # Print banner
+        print_banner()
+
+        # Create LOC counter
+        counter = LOCCounter(
+            repos_dir=args.repos_dir,
+            verbose=args.verbose,
+        )
+
+        # Count LOC in all repositories
+        results = counter.count_all_repositories(output_csv=args.output_csv)
+
+        if results:
+            print(f"\n✅ Successfully counted LOC in {len(results)} repositories!")
+        else:
+            print("\n⚠️  No repositories found")
+
+        return 0
+
+    except ValueError as e:
+        if debug_mode:
+            print(f"\n❌ Error: {e}")
+            import traceback
+            traceback.print_exc()
+        else:
+            print(f"\n❌ Error: {e}")
+            print("   Use --debug for detailed error information")
+        return 1
+
+    except Exception as e:
+        if debug_mode:
+            print(f"\n❌ Unexpected error: {e}")
+            import traceback
+            traceback.print_exc()
+        else:
+            print(f"\n❌ An unexpected error occurred")
+            print(f"   Error type: {type(e).__name__}")
+            print("   Use --debug for detailed error information")
+        return 2
+
+
+def handle_download_command(args: argparse.Namespace, debug_mode: bool) -> int:
+    """
+    Handle download command.
+
+    Args:
+        args: Parsed arguments
+        debug_mode: Enable debug mode
+
+    Returns:
+        Exit code
+    """
+    try:
+        # Print banner
+        print_banner()
+
+        # Create downloader
+        downloader = ProjectDownloader(
+            output_dir=args.output_dir,
+            verbose=args.verbose,
+        )
+
+        # Download projects from CSV
+        stats = downloader.download_from_csv(args.csv_path)
+
+        # Print summary
+        print("\n" + "=" * 60)
+        print("📊 Download Summary")
+        print("=" * 60)
+        print(f"  • Total projects: {stats['total']}")
+        print(f"  • Successfully downloaded: {stats['success']}")
+        print(f"  • Failed: {stats['failed']}")
+        print(f"  • Skipped: {stats['skipped']}")
+        print(f"  • Output directory: {args.output_dir}")
+        print("=" * 60)
+
+        if stats["success"] > 0:
+            print(f"\n✅ Successfully downloaded {stats['success']} projects!")
+        if stats["failed"] > 0:
+            print(f"\n⚠️  {stats['failed']} projects failed to download")
+        if stats["skipped"] > 0:
+            print(f"\n⏭️  {stats['skipped']} projects were skipped")
+
+        return 0 if stats["failed"] == 0 else 1
+
+    except AnalysisError as e:
+        if debug_mode:
+            print(f"\n❌ Error: {e}")
+            import traceback
+            traceback.print_exc()
+        else:
+            print(f"\n❌ Error: {e}")
+            print("   Use --debug for detailed error information")
+        return 1
+
+    except Exception as e:
+        if debug_mode:
+            print(f"\n❌ Unexpected error: {e}")
+            import traceback
+            traceback.print_exc()
+        else:
+            print(f"\n❌ An unexpected error occurred")
+            print(f"   Error type: {type(e).__name__}")
+            print("   Use --debug for detailed error information")
+        return 2
+
+
+def main() -> int:
+    """
+    Main function
+
+    Returns:
+        Exit code
+    """
+    # Parse command-line arguments first (before any operations)
+    parser = create_argument_parser()
+    try:
+        args = parser.parse_args()
+        debug_mode = args.debug if hasattr(args, "debug") else False
+    except SystemExit:
+        # argparse exits on --help or --version
+        return 0
+    except Exception:
+        # If argument parsing fails, we can't use debug flag
+        debug_mode = False
+
+    try:
+        # Handle subcommands
+        command = getattr(args, "command", None)
+
+        # Default to search command if no command specified (backward compatibility)
+        if command == "download":
+            return handle_download_command(args, debug_mode)
+        elif command == "loc":
+            return handle_loc_command(args, debug_mode)
+        else:
+            # Default to search command (backward compatible with old argument format)
+            # Print banner
+            print_banner()
+            return handle_search_command(args, debug_mode)
 
     except KeyboardInterrupt:
         print("\n\n⏹️ User interrupted operation")

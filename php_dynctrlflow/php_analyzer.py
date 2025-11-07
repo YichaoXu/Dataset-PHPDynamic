@@ -321,7 +321,7 @@ class PHPAnalyzer:
                             "message": result.get("message", ""),
                             "severity": result.get("severity", ""),
                             "code_snippet": result.get("code_snippet", ""),
-                        "context": self._get_context_by_line(
+                            "context": self._get_context_by_line(
                                 content, result.get("line_number", 0)
                         ),
                     }

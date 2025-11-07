@@ -332,10 +332,10 @@ class GitHubAPIClient:
                     results.append(result_dict)
                 count += 1
 
-                # Cache results (2 hours, repository info changes less)
-                self.cache_manager.set(cache_key, results, expire_after=7200)
+            # Cache results (2 hours, repository info changes less)
+            self.cache_manager.set(cache_key, results, expire_after=7200)
 
-                return results
+            return results
 
         except GithubException as e:
             error_msg = str(e)
