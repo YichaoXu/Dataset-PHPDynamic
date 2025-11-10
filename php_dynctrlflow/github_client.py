@@ -17,11 +17,17 @@ from .exceptions import GitHubAPIError
 class GitHubAPIClient:
     """Manages interactions with the GitHub API and searches for PHP projects"""
 
+    def _debug_print(self, message: str) -> None:
+        """Print debug message if debug mode is enabled"""
+        if self.debug:
+            print(message)
+
     def __init__(
         self,
         api_token: str,
         cache_manager: CacheManager,
         rate_limit_handler: Any,  # Keep for compatibility but PyGithub handles rate limiting
+        debug: bool = False,
     ) -> None:
         """
         Initialize GitHub API client using PyGithub
@@ -30,6 +36,7 @@ class GitHubAPIClient:
             api_token: GitHub API access token
             cache_manager: Cache manager
             rate_limit_handler: Rate limit handler (kept for compatibility, PyGithub handles rate limiting)
+            debug: Enable debug output
 
         Raises:
             GitHubAPIError: Invalid token
@@ -40,6 +47,7 @@ class GitHubAPIClient:
         self.api_token = api_token
         self.cache_manager = cache_manager
         self.rate_limit_handler = rate_limit_handler
+        self.debug = debug
 
         # Initialize PyGithub client with automatic rate limiting and retry
         # Configure custom retry behavior: wait 1 hour (3600 seconds) for rate limit errors
@@ -265,13 +273,17 @@ class GitHubAPIClient:
 
     def search_repositories_optimized(
         self, query: str, per_page: int = 100, page: int = 1
-    ) -> List[Dict[str, Any]]:
+    ) -> tuple[List[Dict[str, Any]], int | None]:
         """
         Optimized repository search using Repository Search API
 
+        Note: GitHub Search API has a hard limit of 1000 results maximum.
+        This means you can only access the first 1000 matching repositories,
+        regardless of how many pages you request.
+
         Args:
             query: Search query
-            per_page: Number of results per page
+            per_page: Number of results per page (max 100)
             page: Page number (starting from 1)
 
         Returns:
@@ -280,11 +292,14 @@ class GitHubAPIClient:
         Raises:
             GitHubAPIError: API request failed
         """
+        # GitHub Search API limit: maximum 100 results per page
+        per_page = min(per_page, 100)
+        
         # Generate cache key
         url = f"https://api.github.com/search/repositories"
         params: Dict[str, Any] = {
             "q": query,
-            "per_page": min(per_page, 100),
+            "per_page": per_page,
             "page": page,
             "sort": "stars",
             "order": "desc",
@@ -292,24 +307,116 @@ class GitHubAPIClient:
         cache_key = self.cache_manager.generate_cache_key(url, params)
 
         # Try to get from cache
-        cached_result = self.cache_manager.get(cache_key)
-        if cached_result and isinstance(cached_result, list):
-            return list(cached_result)
+        # Note: Cache stores (results, total_count) tuple, not just results
+        cached_data = self.cache_manager.get(cache_key)
+        if cached_data:
+            # Handle both old format (list) and new format (tuple)
+            if isinstance(cached_data, tuple) and len(cached_data) == 2:
+                cached_results, cached_total_count = cached_data
+                if isinstance(cached_results, list):
+                    # Validate cached results format
+                    if len(cached_results) > 0 and isinstance(cached_results[0], dict):
+                        self._debug_print(f"  🔄 [DEBUG] Cache HIT: query={query[:50]}..., per_page={per_page}, page={page}")
+                        self._debug_print(f"  🔄 [DEBUG] Cached results: {len(cached_results)} items, total_count={cached_total_count}")
+                        return list(cached_results), cached_total_count
+                    else:
+                        self._debug_print(f"  🔄 [DEBUG] Cache HIT but invalid format, ignoring cache")
+            elif isinstance(cached_data, list):
+                # Old format: just results, no total_count
+                # Validate format: should be list of dicts
+                if len(cached_data) > 0:
+                    if isinstance(cached_data[0], dict):
+                        self._debug_print(f"  🔄 [DEBUG] Cache HIT (old format): query={query[:50]}..., per_page={per_page}, page={page}")
+                        self._debug_print(f"  🔄 [DEBUG] Cached results: {len(cached_data)} items (old format, no total_count)")
+                        # For old format cache:
+                        # - If per_page=1, we need total_count, so ignore cache
+                        # - If cached results < per_page, likely incomplete, ignore cache
+                        # - Otherwise return cached data
+                        if per_page == 1:
+                            self._debug_print(f"  🔄 [DEBUG] per_page=1, need total_count, ignoring old cache and re-querying")
+                        elif len(cached_data) < per_page:
+                            self._debug_print(f"  🔄 [DEBUG] Cached results ({len(cached_data)}) < requested per_page ({per_page}), likely incomplete, ignoring cache")
+                        else:
+                            self._debug_print(f"  🔄 [DEBUG] Using old format cache: {len(cached_data)} items")
+                            return list(cached_data), None
+                    else:
+                        self._debug_print(f"  🔄 [DEBUG] Cache HIT but invalid format (not dicts), ignoring cache")
+                else:
+                    # Empty list is valid
+                    self._debug_print(f"  🔄 [DEBUG] Cache HIT (old format, empty): query={query[:50]}..., per_page={per_page}, page={page}")
+                    if per_page == 1:
+                        self._debug_print(f"  🔄 [DEBUG] per_page=1, need total_count, ignoring old cache and re-querying")
+                    else:
+                        # Empty list might be valid (no results), but we should verify
+                        self._debug_print(f"  🔄 [DEBUG] Empty cache, re-querying to verify")
+
+        self._debug_print(f"  🔄 [DEBUG] Cache MISS: query={query[:50]}..., per_page={per_page}, page={page}")
 
         try:
             # PyGithub search_repositories returns PaginatedList
-            results = []
-            search_results = self.github.search_repositories(query, sort="stars", order="desc")
+            # Note: get_page() uses 0-based indexing and respects __requester.per_page
+            # IMPORTANT: PaginatedList captures __requester.per_page at creation time,
+            # so we must set per_page BEFORE calling search_repositories
+            original_per_page = self.github.per_page
             
-            # Handle pagination: PyGithub uses 1-based indexing for get_page()
-            start_index = (page - 1) * per_page
-            end_index = start_index + per_page
+            self._debug_print(f"  🔄 [DEBUG] Original Github.per_page: {original_per_page}")
+            self._debug_print(f"  🔄 [DEBUG] Requested per_page: {per_page}")
+            self._debug_print(f"  🔄 [DEBUG] Requested page: {page} (1-based)")
             
-            count = 0
-            for repo in search_results:
-                if count >= end_index:
-                    break
-                if count >= start_index:
+            # Temporarily set per_page for this query
+            # This must be done BEFORE calling search_repositories
+            if per_page != original_per_page:
+                self._debug_print(f"  🔄 [DEBUG] Setting Github.per_page from {original_per_page} to {per_page}")
+                self.github.per_page = per_page
+            else:
+                self._debug_print(f"  🔄 [DEBUG] Github.per_page already set to {per_page}, no change needed")
+            
+            try:
+                # Create PaginatedList with the correct per_page setting
+                # According to PyGithub docs:
+                # - PaginatedList captures __requester.per_page at creation time
+                # - get_page() uses 0-based indexing
+                # - get_page() uses per_page from __requester (captured when PaginatedList was created)
+                self._debug_print(f"  🔄 [DEBUG] Calling search_repositories with per_page={self.github.per_page}")
+                # search_repositories returns PaginatedList of RepositorySearchResult objects
+                # RepositorySearchResult inherits from Repository, so it has all Repository properties
+                search_results = self.github.search_repositories(query, sort="stars", order="desc")
+                
+                # Get total count (even if only 1000 can be returned)
+                # According to PyGithub docs: totalCount property (not total_count)
+                # totalCount is available on PaginatedList objects
+                total_count = search_results.totalCount if hasattr(search_results, 'totalCount') else None
+                self._debug_print(f"  🔄 [DEBUG] PaginatedList.totalCount: {total_count}")
+                
+                # Check the actual per_page from the requester
+                # According to PyGithub docs: PaginatedList has __requester attribute
+                # __requester.per_page is the per_page value used for pagination
+                if hasattr(search_results, '_PaginatedList__requester'):
+                    requester_per_page = getattr(search_results._PaginatedList__requester, 'per_page', None)
+                    self._debug_print(f"  🔄 [DEBUG] PaginatedList.__requester.per_page: {requester_per_page}")
+                
+                # Get the specific page (PyGithub get_page() uses 0-based indexing)
+                # According to PyGithub docs:
+                # - get_page(page) uses 0-based indexing
+                # - If page != 0, it adds (page + 1) to request params (GitHub API uses 1-based)
+                # - get_page() uses per_page from __requester
+                page_index = page - 1  # Convert 1-based to 0-based
+                self._debug_print(f"  🔄 [DEBUG] Calling get_page({page_index}) (0-based index)")
+                
+                # Note: GitHub Search API has a hard limit of 1000 results (10 pages with 100 per page)
+                # get_page() will use the per_page from __requester (captured when PaginatedList was created)
+                page_results = search_results.get_page(page_index)
+                
+                self._debug_print(f"  🔄 [DEBUG] get_page() returned {len(page_results)} results")
+                self._debug_print(f"  🔄 [DEBUG] Expected {per_page} results, got {len(page_results)} results")
+                
+                if len(page_results) != per_page:
+                    self._debug_print(f"  ⚠️  [DEBUG] MISMATCH: Expected {per_page} results but got {len(page_results)} results!")
+                    if len(page_results) == 30:
+                        self._debug_print(f"  ⚠️  [DEBUG] Got exactly 30 results - this suggests default per_page=30 is being used")
+                
+                results = []
+                for repo in page_results:
                     # Convert Repository to dictionary format
                     result_dict: Dict[str, Any] = {
                         "id": repo.id,
@@ -330,12 +437,22 @@ class GitHubAPIClient:
                         "pushed_at": repo.pushed_at.isoformat() if repo.pushed_at else None,
                     }
                     results.append(result_dict)
-                count += 1
+                
+                self._debug_print(f"  🔄 [DEBUG] Final results count: {len(results)}")
+            finally:
+                # Restore original per_page
+                if per_page != original_per_page:
+                    self._debug_print(f"  🔄 [DEBUG] Restoring Github.per_page from {self.github.per_page} to {original_per_page}")
+                    self.github.per_page = original_per_page
+                else:
+                    self._debug_print(f"  🔄 [DEBUG] No need to restore per_page (unchanged)")
 
             # Cache results (2 hours, repository info changes less)
-            self.cache_manager.set(cache_key, results, expire_after=7200)
+            # Cache both results and total_count as a tuple
+            self._debug_print(f"  🔄 [DEBUG] Caching results: {len(results)} items, total_count={total_count}")
+            self.cache_manager.set(cache_key, (results, total_count), expire_after=7200)
 
-            return results
+            return results, total_count
 
         except GithubException as e:
             error_msg = str(e)

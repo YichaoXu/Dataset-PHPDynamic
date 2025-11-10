@@ -23,6 +23,11 @@ from .settings import Settings
 class ProjectSearcher:
     """Project searcher that coordinates all components to complete project search and filtering"""
 
+    def _debug_print(self, message: str) -> None:
+        """Print debug message if debug mode is enabled"""
+        if self.debug:
+            print(message)
+
     def __init__(
         self,
         github_token: str,
@@ -31,6 +36,7 @@ class ProjectSearcher:
         semgrep_analyzer: Optional[SemgrepAnalyzer] = None,
         php_analyzer: Optional[PHPAnalyzer] = None,
         csv_exporter: Optional[CSVExporter] = None,
+        debug: bool = False,
     ) -> None:
         """
         Initialize project searcher
@@ -42,6 +48,7 @@ class ProjectSearcher:
             semgrep_analyzer: Semgrep analyzer
             php_analyzer: PHP analyzer
             csv_exporter: CSV exporter
+            debug: Enable debug output
         """
         # Initialize components
         self.cache_manager = cache_manager or CacheManager()
@@ -49,10 +56,11 @@ class ProjectSearcher:
         self.semgrep_analyzer = semgrep_analyzer or SemgrepAnalyzer()
         self.php_analyzer = php_analyzer or PHPAnalyzer(self.semgrep_analyzer)
         self.csv_exporter = csv_exporter or CSVExporter()
+        self.debug = debug
 
         # Initialize GitHub client
         self.github_client = GitHubAPIClient(
-            github_token, self.cache_manager, self.rate_limit_handler
+            github_token, self.cache_manager, self.rate_limit_handler, debug=debug
         )
 
         # Search statistics
@@ -187,60 +195,61 @@ class ProjectSearcher:
         """
         Search for top stars PHP projects
 
+        Note: GitHub Search API has a hard limit of 1000 results per query.
+        This means for a single query, you can only get the first 1000 results.
+        However, you CAN query different ranges to get different sets of results.
+        
+        Strategy:
+        1. First, check total_count to see how many results exist
+        2. If count <= 1000, use simple query
+        3. If count > 1000, split by stars ranges to get different result sets
+        4. Merge and deduplicate results, then sort by stars
+
         Args:
             count: Number of projects to get
 
         Returns:
-            repositorySearch result list
+            repositorySearch result list, sorted by stars (descending)
 
         Raises:
             GitHubAPIError: GitHub API request failed
         """
+        # GitHub Search API hard limit: maximum 1000 results per query
+        GITHUB_SEARCH_MAX_RESULTS = 1000
+        
         try:
             # Use Repository Search API to search for PHP projects, sorted by stars
-            query = "language:PHP"
+            base_query = "language:PHP"
             print(f"  📡 GitHub Repository Search API:")
-            print(f"     Query: {query}")
+            print(f"     Base Query: {base_query}")
             print(f"     Sort: stars (descending)")
-            print(f"     Count: {count}")
+            print(f"     Requested: {count} projects")
 
-            # Since GitHub API returns at most 100 results per page, need to paginate
-            all_repos: List[Dict[str, Any]] = []
-            per_page = min(count, 100)  # GitHub maximum limit is 100 per page
+            # First, check total_count to see how many results exist
+            _, total_count = self.github_client.search_repositories_optimized(
+                query=base_query,
+                per_page=1,
+                page=1,
+            )
+            
+            if total_count is not None:
+                print(f"  📊 Total matching repositories: {total_count}")
+                if total_count <= GITHUB_SEARCH_MAX_RESULTS:
+                    print(f"  ℹ️  Total results ({total_count}) <= {GITHUB_SEARCH_MAX_RESULTS}, using simple query")
+                else:
+                    print(f"  ⚠️  Total results ({total_count}) > {GITHUB_SEARCH_MAX_RESULTS}, need to use multi-query strategy")
+                    print(f"     Note: GitHub Search API can only return first {GITHUB_SEARCH_MAX_RESULTS} results per query")
+                    print(f"     We'll query different stars ranges to get different result sets")
 
-            # Calculate required number of pages
-            pages_needed = (count + per_page - 1) // per_page
-
-            for page in range(1, pages_needed + 1):
-                if len(all_repos) >= count:
-                    break
-
-                remaining = count - len(all_repos)
-                current_per_page = min(remaining, per_page)
-
-                print(f"  📄 Fetching page {page}/{pages_needed} (requesting {current_per_page} items)...")
-
-                repos = self.github_client.search_repositories_optimized(
-                    query=query,
-                    per_page=current_per_page,
-                    page=page,
-                )
-                all_repos.extend(repos)
-
-                print(f"  ✅ Page {page}: Retrieved {len(repos)} repositories")
-                print(f"  📊 Total so far: {len(all_repos)}/{count}")
-
-                # If number of results returned is less than requested, no more results available
-                if len(repos) < current_per_page:
-                    print(f"  ⚠️  No more results available")
-                    break
-
-            # Limit to requested number
-            if len(all_repos) > count:
-                all_repos = all_repos[:count]
-
-            print(f"\n  ✅ Successfully retrieved {len(all_repos)} PHP repositories")
-            return all_repos
+            # If count <= 1000, use simple query
+            if count <= GITHUB_SEARCH_MAX_RESULTS:
+                return self._search_single_query(base_query, count)
+            
+            # For count > 1000, split by stars ranges
+            print(f"  🔄 Using multi-query strategy to bypass 1000 result limit")
+            print(f"     Each query can return up to {GITHUB_SEARCH_MAX_RESULTS} results")
+            
+            return self._search_with_stars_ranges(base_query, count)
 
         except Exception as e:
             print(f"  ❌ GitHub search failed: {e}")
@@ -249,6 +258,305 @@ class ProjectSearcher:
             print("  📋 Error details:")
             print(f"     {traceback.format_exc()}")
             raise GitHubAPIError(f"GitHub search failed: {e}") from e
+
+    def _search_single_query(
+        self, query: str, count: int
+    ) -> List[Dict[str, Any]]:
+        """
+        Search with a single query (for count <= 1000).
+
+        Args:
+            query: Search query
+            count: Number of results to get
+
+        Returns:
+            List of repository dictionaries
+        """
+        all_repos: List[Dict[str, Any]] = []
+        per_page = 100  # GitHub maximum limit is 100 per page
+        pages_needed = min((count + per_page - 1) // per_page, 10)
+
+        # Track total_count from first query to know actual available results
+        first_total_count = None
+        
+        for page in range(1, pages_needed + 1):
+            if len(all_repos) >= count:
+                break
+
+            remaining = count - len(all_repos)
+            current_per_page = min(remaining, per_page)
+
+            print(f"  📄 Fetching page {page}/{pages_needed} (requesting {current_per_page} items)...")
+            self._debug_print(f"  🔍 [DEBUG] Query: {query[:80]}...")
+            self._debug_print(f"  🔍 [DEBUG] Requesting per_page={current_per_page}, page={page}")
+
+            repos, total_count = self.github_client.search_repositories_optimized(
+                query=query,
+                per_page=current_per_page,
+                page=page,
+            )
+            
+            # Capture total_count from first query
+            if first_total_count is None and total_count is not None:
+                first_total_count = total_count
+                self._debug_print(f"  🔍 [DEBUG] First query total_count: {first_total_count}")
+            
+            self._debug_print(f"  🔍 [DEBUG] Received {len(repos)} repos (expected {current_per_page})")
+            self._debug_print(f"  🔍 [DEBUG] Total count from API: {total_count}")
+            
+            all_repos.extend(repos)
+
+            print(f"  ✅ Page {page}: Retrieved {len(repos)} repositories")
+            print(f"  📊 Total so far: {len(all_repos)}/{count}")
+
+            # Check if we should continue pagination
+            # If we got fewer results than requested, check if it's because:
+            # 1. We've reached the end (no more results available)
+            # 2. Cache returned incomplete data (old format with fewer items)
+            if len(repos) < current_per_page:
+                # If we have total_count, check if we've gotten all available results
+                if first_total_count is not None:
+                    if len(all_repos) >= first_total_count:
+                        self._debug_print(f"  🔍 [DEBUG] Got all available results ({len(all_repos)} >= {first_total_count})")
+                        print(f"  ⚠️  No more results available")
+                        break
+                    else:
+                        print(f"  ⚠️  Got {len(repos)} < {current_per_page} results, but total_count={first_total_count} suggests more available")
+                        self._debug_print(f"  🔍 [DEBUG] This might be incomplete cache data, but continuing anyway")
+                        # Continue to next page to try getting more
+                        continue
+                else:
+                    # No total_count available, assume we've reached the end
+                    print(f"  ⚠️  No more results available (no total_count to verify)")
+                    self._debug_print(f"  🔍 [DEBUG] Got {len(repos)} < {current_per_page} results, stopping pagination")
+                    break
+
+        if len(all_repos) > count:
+            all_repos = all_repos[:count]
+
+        print(f"\n  ✅ Successfully retrieved {len(all_repos)} PHP repositories")
+        return all_repos
+
+    def _search_with_stars_ranges(
+        self, base_query: str, count: int
+    ) -> List[Dict[str, Any]]:
+        """
+        Search by splitting queries into stars ranges to bypass 1000 result limit.
+
+        Strategy:
+        1. Start with high stars ranges (e.g., stars:>=10000)
+        2. For each range, check total_count
+        3. If a range has > 1000 results, dynamically subdivide it
+        4. Continue until we have enough results or no more ranges available
+        5. Merge and deduplicate results, then sort by stars
+
+        Args:
+            base_query: Base search query (e.g., "language:PHP")
+            count: Number of results to get
+
+        Returns:
+            List of repository dictionaries, sorted by stars (descending)
+        """
+        GITHUB_SEARCH_MAX_RESULTS = 1000
+        all_repos: List[Dict[str, Any]] = []
+        seen_repo_ids: set = set()  # For deduplication
+
+        # Define initial stars ranges (descending order)
+        # These are starting points; ranges will be subdivided if needed
+        initial_ranges = [
+            (100000, None),  # Very popular (>=100k stars)
+            (50000, 99999),
+            (20000, 49999),
+            (10000, 19999),
+            (5000, 9999),
+            (2000, 4999),
+            (1000, 1999),
+            (500, 999),
+            (200, 499),
+            (100, 199),
+            (50, 99),
+            (20, 49),
+            (10, 19),
+            (1, 9),
+            (0, 0),  # No stars
+        ]
+
+        print(f"  📊 Strategy: Query multiple stars ranges and merge results")
+        print(f"     Initial ranges: {len(initial_ranges)}")
+        print(f"     Will dynamically subdivide ranges with > {GITHUB_SEARCH_MAX_RESULTS} results")
+
+        # Process ranges as a queue, subdividing as needed
+        ranges_to_process = [(min_stars, max_stars) for min_stars, max_stars in initial_ranges]
+        range_idx = 0
+
+        while ranges_to_process and len(all_repos) < count:
+            range_idx += 1
+            min_stars, max_stars = ranges_to_process.pop(0)
+
+            # Build query with stars range
+            if max_stars is None:
+                stars_query = f"stars:>={min_stars}"
+            else:
+                stars_query = f"stars:{min_stars}..{max_stars}"
+            
+            query = f"{base_query} {stars_query}"
+            
+            print(f"\n  🔍 Range {range_idx}: {stars_query}")
+            print(f"     Query: {query}")
+
+            try:
+                # First, check total_count for this range
+                self._debug_print(f"  🔍 [DEBUG] Checking total_count for range: {stars_query}")
+                self._debug_print(f"  🔍 [DEBUG] Query: {query}")
+                check_results, total_count = self.github_client.search_repositories_optimized(
+                    query=query,
+                    per_page=1,
+                    page=1,
+                )
+                
+                self._debug_print(f"  🔍 [DEBUG] Check query returned {len(check_results)} results (expected 1)")
+                
+                if total_count is None:
+                    print(f"  ⚠️  Could not get total_count for range, skipping")
+                    continue
+                
+                print(f"  📊 Total results in range: {total_count}")
+
+                # If this range has > 1000 results, subdivide it
+                if total_count > GITHUB_SEARCH_MAX_RESULTS:
+                    print(f"  ⚠️  Range has {total_count} results (>{GITHUB_SEARCH_MAX_RESULTS}), subdividing...")
+                    
+                    # Subdivide the range
+                    sub_ranges = self._subdivide_stars_range(min_stars, max_stars)
+                    print(f"  🔄 Subdivided into {len(sub_ranges)} sub-ranges")
+                    
+                    # Add sub-ranges to the front of the queue (process higher stars first)
+                    ranges_to_process = sub_ranges + ranges_to_process
+                    continue
+
+                # Range has <= 1000 results, fetch all of them
+                fetch_count = min(total_count, GITHUB_SEARCH_MAX_RESULTS)
+                self._debug_print(f"  🔍 [DEBUG] Fetching {fetch_count} results for range (total_count={total_count})")
+                range_repos = self._search_single_query(query, fetch_count)
+                
+                self._debug_print(f"  🔍 [DEBUG] _search_single_query returned {len(range_repos)} repos (expected {fetch_count})")
+                
+                # Deduplicate and add new repos
+                new_repos = []
+                for repo in range_repos:
+                    # Validate repo format (should be dict)
+                    if not isinstance(repo, dict):
+                        self._debug_print(f"  ⚠️  [DEBUG] Invalid repo format (not dict): {type(repo)}, skipping")
+                        continue
+                    repo_id = repo.get("id")
+                    if repo_id and repo_id not in seen_repo_ids:
+                        seen_repo_ids.add(repo_id)
+                        new_repos.append(repo)
+                
+                self._debug_print(f"  🔍 [DEBUG] After deduplication: {len(new_repos)} new repos (from {len(range_repos)} total)")
+                
+                all_repos.extend(new_repos)
+                
+                print(f"  ✅ Range {range_idx}: Retrieved {len(range_repos)} repos, {len(new_repos)} new")
+                print(f"  📊 Total so far: {len(all_repos)}/{count}")
+
+                # If this range returned less than requested, likely no more results in lower ranges
+                if len(range_repos) < total_count:
+                    print(f"  ℹ️  Range returned {len(range_repos)} results (less than total {total_count})")
+                    self._debug_print(f"  🔍 [DEBUG] Missing {total_count - len(range_repos)} results from this range")
+
+            except Exception as e:
+                print(f"  ⚠️  Range {range_idx} failed: {e}")
+                # Continue with next range
+                continue
+
+        # Sort by stars (descending) and limit to requested count
+        all_repos.sort(key=lambda x: x.get("stargazers_count", 0), reverse=True)
+        
+        if len(all_repos) > count:
+            all_repos = all_repos[:count]
+
+        print(f"\n  ✅ Successfully retrieved {len(all_repos)} PHP repositories")
+        print(f"     (from {range_idx} ranges, deduplicated)")
+        
+        if len(all_repos) < count:
+            print(f"  ⚠️  Note: Only {len(all_repos)} results available (may have exhausted all matching repositories)")
+
+        return all_repos
+
+    def _subdivide_stars_range(
+        self, min_stars: int, max_stars: int | None
+    ) -> List[tuple[int, int | None]]:
+        """
+        Subdivide a stars range into smaller ranges.
+
+        Strategy:
+        - For ranges with max_stars, split into 2-4 sub-ranges
+        - For ranges with max_stars=None (>=min_stars), use exponential backoff
+        - Ensure each sub-range is small enough to potentially have <= 1000 results
+
+        Args:
+            min_stars: Minimum stars in range
+            max_stars: Maximum stars in range (None means >=min_stars)
+
+        Returns:
+            List of (min_stars, max_stars) tuples for sub-ranges
+        """
+        if max_stars is None:
+            # For open-ended ranges (>=min_stars), use exponential backoff
+            # Start with smaller ranges at the top, larger at the bottom
+            if min_stars >= 100000:
+                # Very high stars: split into smaller chunks
+                return [
+                    (min_stars * 2, None),  # >= 2*min_stars
+                    (min_stars, min_stars * 2 - 1),  # min_stars..2*min_stars-1
+                ]
+            elif min_stars >= 10000:
+                # High stars: split into 2-3 chunks
+                return [
+                    (min_stars * 2, None),  # >= 2*min_stars
+                    (int(min_stars * 1.5), min_stars * 2 - 1),  # 1.5*min_stars..2*min_stars-1
+                    (min_stars, int(min_stars * 1.5) - 1),  # min_stars..1.5*min_stars-1
+                ]
+            else:
+                # Lower stars: split into more chunks
+                return [
+                    (min_stars * 3, None),  # >= 3*min_stars
+                    (min_stars * 2, min_stars * 3 - 1),  # 2*min_stars..3*min_stars-1
+                    (int(min_stars * 1.5), min_stars * 2 - 1),  # 1.5*min_stars..2*min_stars-1
+                    (min_stars, int(min_stars * 1.5) - 1),  # min_stars..1.5*min_stars-1
+                ]
+        else:
+            # For bounded ranges, split into 2-4 sub-ranges
+            range_size = max_stars - min_stars + 1
+            
+            if range_size <= 100:
+                # Small range, don't subdivide further
+                return [(min_stars, max_stars)]
+            elif range_size <= 500:
+                # Medium range, split into 2
+                mid = (min_stars + max_stars) // 2
+                return [
+                    (mid + 1, max_stars),  # Upper half
+                    (min_stars, mid),  # Lower half
+                ]
+            elif range_size <= 2000:
+                # Large range, split into 3
+                third = range_size // 3
+                return [
+                    (min_stars + 2 * third + 1, max_stars),  # Upper third
+                    (min_stars + third + 1, min_stars + 2 * third),  # Middle third
+                    (min_stars, min_stars + third),  # Lower third
+                ]
+            else:
+                # Very large range, split into 4
+                quarter = range_size // 4
+                return [
+                    (min_stars + 3 * quarter + 1, max_stars),  # Upper quarter
+                    (min_stars + 2 * quarter + 1, min_stars + 3 * quarter),  # Third quarter
+                    (min_stars + quarter + 1, min_stars + 2 * quarter),  # Second quarter
+                    (min_stars, min_stars + quarter),  # Lower quarter
+                ]
 
     def _process_batch(
         self,

@@ -46,7 +46,7 @@ Example usage:
     parser.add_argument(
         "--debug",
         action="store_true",
-        help="Show detailed error information (including tracebacks)",
+        help="Enable debug output (detailed API calls, cache operations, pagination details)",
     )
 
     # Search command arguments (for backward compatibility, keep in main parser)
@@ -264,7 +264,7 @@ def handle_search_command(args: argparse.Namespace, debug_mode: bool) -> int:
 
         # Create project searcher
         print("\n🚀 Initializing project searcher...")
-        searcher = ProjectSearcher(github_token)
+        searcher = ProjectSearcher(github_token, debug=debug_mode)
 
         try:
             # Execute search
